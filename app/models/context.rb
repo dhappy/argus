@@ -5,5 +5,5 @@ class Context
   property :updated_at, type: DateTime
 
   has_many :out, :contexts, type: :SUB, unique: true
-  has_one :out, :reference, type: :REF, model_class: :Book
+  has_many :out, :for, type: :FOR, model_class: :Book
 end

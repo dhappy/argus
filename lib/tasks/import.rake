@@ -12,8 +12,10 @@ namespace :import do
       cs[0..-2].each.with_index do |c, i|
         c.contexts << cs[i + 1]
       end
-      book = Context.create(title: path[-1], author: path[-1])
+      book = Book.merge(title: path[-1], author: path[-1])
       cs[-1].reference = book
+      book.cover = Content.merge(mimetype: 'image/jpeg', ipfs_id: rand())
+      book.content = Content.merge(mimetype: 'application/zip+epub', ipfs_id: rand())
     end
   end
 
@@ -24,8 +26,6 @@ namespace :import do
     require 'zip'
 
     puts "Searching: #{args[:dir]}/*/*-images.epub"
-    outdir = "gutenepubs-#{Time.now.iso8601}"
-    puts " For: #{outdir}"
 
     Dir.glob("#{args[:dir]}/*").each.with_index do |dir, idx|
       next unless File.directory?(dir)
@@ -112,20 +112,6 @@ namespace :import do
       end
       puts " Done: #{bookId}"
 
-      puts ' Creating FS:'
-      basedir = "/#{outdir}/project/Gutenberg/id/#{guten_id}"
-      system('ipfs', 'files', 'mkdir', '-p', basedir)
-      if cover
-        system('ipfs', 'files', 'cp', "/ipfs/#{coverId}", "/#{basedir}/#{cover}")
-      end
-      system('ipfs', 'files', 'cp', "/ipfs/#{bookId}", "/#{basedir}/index.epub")
-
-      dirId = nil
-      IO.popen(['ipfs', 'files', 'stat', basedir], 'r+') do |cmd|
-        dirId = cmd.readlines.first&.chomp
-      end
-      puts " Done: #{dirId}"
-
       metadata = Dir.glob('*.rdf').try(:[], 0)
 
       puts ' Next, read the metadata:'
@@ -147,15 +133,6 @@ namespace :import do
             Nokogiri::HTML.parse(res.to_s).text # uses & escapes
           else
             res
-          end
-        }
-
-        add = ->(paths) {
-          paths.each do |path|
-            next if path.any?{ |p| p.nil? || p.empty? }
-
-            system('ipfs', 'files', 'mkdir', '-p', "/#{outdir}/#{File.join(path[0..-2])}")
-            system('ipfs', 'files', 'cp', "/ipfs/#{dirId}", "/#{outdir}/#{File.join(path)}")
           end
         }
 
@@ -189,15 +166,39 @@ namespace :import do
         )
         fulltitle = "#{title}#{author && ", by #{author}"}"
 
+        root = Context.merge(name: '∅')
+
+        add = ->(paths) {
+          paths.each do |path|
+            curr = root
+            cs = path.map do |p|
+              child = curr.contexts.find_by(name: p)
+              child ||= Context.create(name: p)
+              curr = child
+            end
+            root.contexts << cs[0]
+            cs[0..-2].each.with_index do |c, i|
+              c.contexts << cs[i + 1]
+            end
+            book = Book.merge(title: title, author: author)
+            cs[-1].for << book
+            if coverId
+              book.cover = Content.merge(mimetype: 'image/*', ipfs_id: coverId)
+            end
+            book.content = Content.merge(mimetype: 'application/epub+zip', ipfs_id: bookId)
+          end
+        }
+
         add.call([
-          ['book', 'by', author, title],
-          ['book', 'bibliographically', bibauthor, title],
+          ['book', 'by', author],
+          ['book', 'bibliographically', bibauthor],
           ['book', 'entitled', fulltitle],
-          ['book', 'language', lang, fulltitle]
+          ['book', 'language', lang],
+          ['project', 'Gutenberg', 'id', guten_id]
         ])
-        add.call(subs.map{ |s| ['subject'] + s + [fulltitle] })
+        add.call(subs.map{ |s| ['subject'] + s })
         add.call(shelves.map do |s|
-          %w[project Gutenberg bookshelf] + [s, fulltitle]
+          %w[project Gutenberg bookshelf] + [s]
         end)
       end
     end
