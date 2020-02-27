@@ -1,4 +1,7 @@
 Rails.application.configure do
+  config.neo4j.session_type = :http
+  config.neo4j.session_path = 'http://neo4j:neo4j@localhost:7687'
+
   # Settings specified here will take precedence over those in config/application.rb.
 
   # In the development environment your application's code is reloaded on
