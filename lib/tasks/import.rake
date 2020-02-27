@@ -2,8 +2,19 @@ namespace :import do
   desc 'Import data from external sources'
 
   task(pathtest: :environment) do |t, args|
-    path = [:one, :two, :three]
-    
+    paths = [
+      [:book, :by, 'Ursula K. LeGuinn', :AWoE],
+      [:book, :by, 'Robert Shea', 'Illuminatus!'],
+      [:book, :by, 'Issac Asimov', :Foundation]
+    ]
+    paths.each do |path|
+      cs = path.map{ |p| Context.merge(name: p) }
+      cs[0..-2].each.with_index do |c, i|
+        c.contexts << cs[i + 1]
+      end
+      book = Context.create(title: path[-1], author: path[-1])
+      cs[-1].reference = book
+    end
   end
 
   task(

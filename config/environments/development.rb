@@ -1,6 +1,6 @@
 Rails.application.configure do
   config.neo4j.session_type = :http
-  config.neo4j.session_path = 'http://neo4j:neo4j@localhost:7687'
+  config.neo4j.session_path = 'http://localhost:7474'
 
   # Settings specified here will take precedence over those in config/application.rb.
 
