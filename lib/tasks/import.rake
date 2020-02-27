@@ -125,7 +125,8 @@ namespace :import do
             opf: 'http://www.idpf.org/2007/opf',
             dcterms: 'http://purl.org/dc/terms/',
             rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-            pgterms: 'http://www.gutenberg.org/2009/pgterms/'
+            pgterms: 'http://www.gutenberg.org/2009/pgterms/',
+            marcrel: 'http://id.loc.gov/vocabulary/relators/'
           )
           if !asNodes && res.size == 0
             nil
@@ -137,13 +138,20 @@ namespace :import do
         }
 
         bibauthors = xpath.call('//dcterms:creator//pgterms:name/text()', true)
+        if bibauthors.empty?
+          bibauthors = xpath.call('//marcrel:*//pgterms:name/text()', true)
+        end
         bibauthor = bibauthors.map(&:to_s).join(' & ')
         authors = bibauthors.map do |a|
           a.to_s.sub(/^(.+?), (.+)$/, '\2 \1')
           .gsub(/\s+\(.*?\)\s*/, ' ')
         end
         author = authors.join(' & ')
-        title = xpath.call('//dcterms:title/text()').gsub(/\r?\n/, ' ')
+        title = xpath.call('//dcterms:title/text()')
+        if title.is_a?(Nokogiri::XML::NodeSet)
+          title = title.map(&:to_s).join(' / ')
+        end
+        title.gsub!(/\r?\n/, ' ')
         lang = xpath.call('//dcterms:language//rdf:value/text()')
         if lang.is_a?(Nokogiri::XML::NodeSet)
           lang = "#{lang[0..-2].map(&:to_s).join(', ')} & #{lang[-1]}"
