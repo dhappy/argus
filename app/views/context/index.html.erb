@@ -8,7 +8,7 @@
   <tr><th>Index</th><th>Title</th><th>Author</th></tr>
   <% @books.each.with_index(1) do |b, i| %><tr>
     <td><%= i %></td>
-    <td><%= link_to(b.title, "//ipfs.io/ipfs/#{b.cover&.ipfs_id}") %></td>
+    <td><%= link_to(b.title, "/view/#{b.uuid}") %></td>
     <td><%= b.author %></td>
   </tr><% end %>
 </table>
