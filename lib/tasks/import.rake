@@ -212,6 +212,62 @@ namespace :import do
     end
   end
 
+  task(tipepubs: :environment) do
+    require 'ipfs/client'
+    
+    root = Context.merge(name: '∅')
+
+    add = ->(epub) {
+      title = epub.metadata.title.to_s
+      author = epub.metadata.creators.map(&:to_s).join(' & ')
+      path = [:book, :by, author, title]
+      puts "Adding: #{path.join('/')}"
+      curr = root
+      cs = path.map do |p|
+        child = curr.contexts.find_by(name: p)
+        child ||= Context.create(name: p)
+        curr = child
+      end
+      root.contexts << cs[0]
+      cs[0..-2].each.with_index do |c, i|
+        c.contexts << cs[i + 1]
+      end
+      book = Book.merge(title: title, author: author)
+      cs[-1].for << book
+      if epub.cover_image
+        Tempfile.open('ebook', "#{Rails.root}/tmp", encoding: 'ascii-8bit') do |file|
+          file.write(epub.cover_image.read)
+          cover = IPFS::Client.default.add(file.path)
+          book.cover = Content.merge(
+            mimetype: epub.cover_image.media_type,
+            ipfs_id: cover.hashcode
+          )
+        end
+      end
+      content = IPFS::Client.default.add(epub.epub_file)
+      book.content = Content.merge(
+        mimetype: 'application/epub+zip', ipfs_id: content.hashcode
+      )
+    }
+
+    spider = ->(dir) {
+      Dir.glob("#{dir}/*").each do |sub|
+        if File.directory?(sub)
+          spider.call(sub)
+        elsif /epub$/.match?(sub)
+          begin
+            puts sub
+            epub = EPUB::Parser.parse(sub)
+            add.call(epub)
+          rescue Archive::Zip::Error => err
+            puts " Error: #{err}"
+          end
+        end
+      end
+    }
+    spider.call("#{Dir.home}/.../book/")
+  end
+
   task(
     :json,
     [:file, :award] => [:environment]
