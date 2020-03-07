@@ -1,6 +1,11 @@
 <%#= react_component('Index', {name: 'Test'}) %>
 <ol>
   <% @contexts.each do |c| %>
+    <li><%= link_to c.name, "#{@path && "/#{@path}"}/../../#{c.name}" %></li>
+  <% end %>
+</ol>
+<ol>
+  <% @subcontexts.each do |c| %>
     <li><%= link_to c.name, "#{@path && "/#{@path}"}/#{c.name}" %></li>
   <% end %>
 </ol>

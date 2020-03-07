@@ -2,6 +2,10 @@ namespace :isfdb do
   desc 'Import from the Internet Speculative Fiction Database'
 
   task(awards: :environment) do |t, args|
+    root = Context.merge(name: '∅')
+    base = Context.merge(name: :award)
+    root.contexts << base
+
     client = Mysql2::Client.new(
       host: 'localhost', database: 'isfdb'
     )
@@ -14,10 +18,8 @@ namespace :isfdb do
       symbolize_keys: true
     )
     types.each do |type|
-      award = Award.merge(
-        name: type[:name],
-        shortname: type[:shortname]
-      )
+      puts "Award: #{type[:name]}"
+
       entries = client.query(
         'SELECT' \
         + ' award_title AS title,' \
@@ -32,18 +34,27 @@ namespace :isfdb do
         cast: false # dates are of form YYYY-00-00
       )
       entries.each do |entry|
-        puts "#{entry[:cat]}: #{entry[:title]} by #{entry[:author]}"
-        Entry.find_or_create_by!(
-          award: award,
-          year: Year.find_or_create_by!(
-            number: entry[:year].sub(/-.*/, '')
-          ),
-          category: Category.find_or_create_by!(
-            name: entry[:cat]
-          ),
-          won: true,
-          nominee: Book.for(entry[:author], entry[:title])
-        )
+        # award/Hugo/1968/Best Novel/winner
+        # award/Hugo/1968/Best Novel/nominee/1
+
+        entry[:year].sub!(/-.*/, '')
+        paths = [
+          [
+            {name: type[:name], type: :award},
+            {name: entry[:year], type: :year},
+            {name: entry[:cat], type: :category}
+          ],
+          [
+            {name: type[:name], type: :award},
+            {name: entry[:cat], type: :category},
+            {name: entry[:year], type: :year}
+          ]
+        ]
+        paths.each do |path|
+          curr = base
+          path.each{ |p| curr = curr.subcontexts.find_or_create_by(p) }
+          curr.for << Book.merge(author: entry[:author], title: entry[:title])
+        end
       end
     end
   end

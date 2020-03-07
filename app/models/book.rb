@@ -5,6 +5,7 @@ class Book
   property :created_at, type: DateTime
   property :updated_at, type: DateTime
 
+  has_many :in, :contexts, type: :FOR
   has_one :out, :cover, type: :CVR, model_class: :Content
   has_one :out, :content, type: :DAT
 end

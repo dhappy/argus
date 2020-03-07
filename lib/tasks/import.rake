@@ -224,9 +224,7 @@ namespace :import do
       puts "Adding: #{path.join('/')}"
       curr = root
       cs = path.map do |p|
-        child = curr.contexts.find_by(name: p)
-        child ||= Context.create(name: p)
-        curr = child
+        curr = curr.subcontexts.find_or_create_by(name: p)
       end
       root.contexts << cs[0]
       cs[0..-2].each.with_index do |c, i|
