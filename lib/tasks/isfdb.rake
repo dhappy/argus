@@ -4,7 +4,7 @@ namespace :isfdb do
   task(awards: :environment) do |t, args|
     root = Context.merge(name: '∅')
     base = Context.merge(name: :award)
-    root.contexts << base
+    root.subcontexts << base
 
     client = Mysql2::Client.new(
       host: 'localhost', database: 'isfdb'

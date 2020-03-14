@@ -14,7 +14,7 @@ class ContextController < ApplicationController
     @subcontexts = @root.subcontexts(:r).order('r.name').limit(50)
 
     @books = (
-      @root.contexts(rel_length: {min:0}).for(:b)
+      @root.subcontexts(rel_length: {min:0}).for(:b)
       .distinct
       .order('b.author, b.title')
       .limit(50)

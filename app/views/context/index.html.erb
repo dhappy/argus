@@ -13,7 +13,13 @@
   <tr><th>Index</th><th>Title</th><th>Author</th></tr>
   <% @books.each.with_index(1) do |b, i| %><tr>
     <td><%= i %></td>
-    <td><%= link_to(b.title, "/view/#{b.uuid}") %></td>
+    <td>
+      <% if b.content&.ipfs_id %>
+        <%= link_to(b.title, "/view/#{b.uuid}") %>
+      <% else %>
+        <%= b.title.html_safe %>
+      <% end %>
+    </td>
     <td><%= b.author %></td>
   </tr><% end %>
 </table>

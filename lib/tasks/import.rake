@@ -219,16 +219,14 @@ namespace :import do
 
     add = ->(epub) {
       title = epub.metadata.title.to_s
-      author = epub.metadata.creators.map(&:to_s).join(' & ')
+      authors = epub.metadata.creators.map(&:to_s)
+      authors = authors.map{ |a| a.sub(/^(.+), (.+)$/, '\2 \1') }
+      author = authors.join(' & ')
       path = [:book, :by, author, title]
       puts "Adding: #{path.join('/')}"
       curr = root
       cs = path.map do |p|
         curr = curr.subcontexts.find_or_create_by(name: p)
-      end
-      root.contexts << cs[0]
-      cs[0..-2].each.with_index do |c, i|
-        c.contexts << cs[i + 1]
       end
       book = Book.merge(title: title, author: author)
       cs[-1].for << book

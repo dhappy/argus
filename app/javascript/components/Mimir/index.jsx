@@ -4,6 +4,7 @@ import { Link, useHistory } from 'react-router-dom'
 import { Button, Carousel, Tooltip, Icon, Menu, Dropdown, Tag, Input } from 'antd'
 import { useLocation } from 'react-router-dom'
 //import { useDB } from 'react-pouchdb'
+import { parseEpub } from '@gxl/epub-parser'
 import Hammer from 'react-hammerjs'
 import * as Z from '../Unzip'
 const { zip } = Z
@@ -178,10 +179,15 @@ export default (props) => {
   }
 
   useEffect(() => {
-    const reader = new zip.HttpReader(url)
-    zip.createReader(reader, function(zipReader) {
-      zipReader.getEntries(process)
-    }, console.error)
+    // const reader = new zip.HttpReader(url)
+    // zip.createReader(reader, function(zipReader) {
+    //   zipReader.getEntries(process)
+    // }, console.error)
+    const getEPub = async () => {
+      const res = await fetch(url)
+      //console.log('D', parseEpub(res.body))
+    }
+    getEPub()
   }, [url])
 
   const onTap = (evt) => {
