@@ -222,11 +222,15 @@ namespace :import do
       authors = epub.metadata.creators.map(&:to_s)
       authors = authors.map{ |a| a.sub(/^(.+), (.+)$/, '\2 \1') }
       author = authors.join(' & ')
-      path = [:book, :by, author, title]
+      path = [
+        {name: :book}, {name: :by},
+        {name: author, type: :author},
+        {name: title, type: :title}
+      ]
       puts "Adding: #{path.join('/')}"
       curr = root
       cs = path.map do |p|
-        curr = curr.subcontexts.find_or_create_by(name: p)
+        curr = curr.subcontexts.find_or_create_by(p)
       end
       book = Book.merge(title: title, author: author)
       cs[-1].for << book
