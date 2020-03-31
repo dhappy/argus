@@ -53,5 +53,6 @@ gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
 gem 'neo4j', git: 'https://github.com/neo4jrb/neo4j.git'
 gem 'react-rails'
 gem 'epub-parser', path: '../epub-parser'
+gem 'archive-zip'
 gem 'ipfs'
 gem 'mysql2'

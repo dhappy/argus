@@ -5,7 +5,7 @@ namespace :export do
 
     basedir = "epubs-#{Time.now.iso8601}"
     q = Neo4j::ActiveBase.current_session.query(
-      "MATCH (n:Context)-[:SUB*]->(m:Context)-[f:FOR]->(book:Book) WHERE n.name = 'Hugo Award' AND n.type = 'award' RETURN DISTINCT book"
+      "MATCH (n:Context)-[:SUB*]->(m:Context)-[f:FOR]->(book:Book) WHERE n.name = 'Hugo Award' AND n.type = 'award' AND (book:Book)-[:DAT]->() RETURN DISTINCT book"
     )
     q.each do |ret|
       book = ret.book
@@ -33,11 +33,12 @@ namespace :export do
         system('ipfs', 'files', 'cp', "/ipfs/#{mimis.hashcode}", "#{datadir}/mimis.json")
       end
 
-      if false && book.content
+      if book.content
         puts "  Adding: #{datadir}/index.epub"
         system('ipfs', 'files', 'cp', "/ipfs/#{book.content.ipfs_id}", "#{datadir}/index.epub")
       end
-      covers = [book.cover] + book.versions(rel_length: :any).cover.to_a
+      covers = book.versions(rel_length: :any).cover.to_a
+      covers = [book.cover] if covers.empty?
       covers.select!{ |c| c&.ipfs_id.present? }
       covers.uniq!(&:ipfs_id)
       if covers.any?

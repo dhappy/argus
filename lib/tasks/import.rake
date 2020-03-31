@@ -1,6 +1,5 @@
 namespace :import do
   desc 'Import data from external sources'
-
   task(pathtest: :environment) do |t, args|
     paths = [
       [:book, :by, 'Ursula K. LeGuinn', :AWoE],
@@ -19,10 +18,7 @@ namespace :import do
     end
   end
 
-  task(
-    :gutenepubs,
-    [:dir] => [:environment]
-  ) do |t, args|
+  task(:gutenepubs, [:dir] => [:environment]) do |t, args|
     require 'zip'
 
     puts "Searching: #{args[:dir]}/*/*-images.epub"
@@ -212,7 +208,8 @@ namespace :import do
     end
   end
 
-  task(tipepubs: :environment) do
+  desc 'Recursively find all epubs, save doc and cover to IPFS and Neo4J'
+  task(:epubs, [:basedir] => [:environment]) do |t, args|
     require 'ipfs/client'
     
     root = Context.merge(name: '∅')
@@ -227,7 +224,7 @@ namespace :import do
         {name: author, type: :author},
         {name: title, type: :title}
       ]
-      puts "Adding: #{path.join('/')}"
+      puts "Adding: #{path.map{ |p| p[:name] }.join('/')}"
       curr = root
       cs = path.map do |p|
         curr = curr.subcontexts.find_or_create_by(p)
@@ -237,6 +234,7 @@ namespace :import do
       if epub.cover_image
         Tempfile.open('ebook', "#{Rails.root}/tmp", encoding: 'ascii-8bit') do |file|
           file.write(epub.cover_image.read)
+          file.flush
           cover = IPFS::Client.default.add(file.path)
           book.cover = Content.merge(
             mimetype: epub.cover_image.media_type,
@@ -265,18 +263,19 @@ namespace :import do
         end
       end
     }
-    spider.call("#{Dir.home}/.../book/")
+    basedir = args[:basedir] || "#{Dir.home}/.../book/"
+    puts "Starting spider @ #{basedir}"
+    spider.call(basedir)
   end
 
+  desc 'Import Entrys from JSON [file, award]'
   task(
     :json,
     [:file, :award] => [:environment]
   ) do |t, args|
     Rails.logger.level = 0
 
-    award = Award.find_or_create_by(
-      name: args[:award]
-    )
+    award = Award.find_or_create_by(name: args[:award])
     data = File.open(args[:file]) do |f|
       json = JSON.parse(f.read)
       entries = Entry.parse(json, award)

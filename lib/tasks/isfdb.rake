@@ -25,7 +25,8 @@ namespace :isfdb do
         + ' award_title AS title,' \
         + ' award_author AS author,' \
         + ' award_cat_name AS cat,' \
-        + ' award_year AS year' \
+        + ' award_year AS year,' \
+        + ' award_movie AS movie' \
         + ' FROM awards' \
         + ' INNER JOIN award_cats' \
         + ' ON awards.award_cat_id = award_cats.award_cat_id' \
@@ -53,7 +54,13 @@ namespace :isfdb do
         paths.each do |path|
           curr = base
           path.each{ |p| curr = curr.subcontexts.find_or_create_by(p) }
-          curr.for << Book.merge(author: entry[:author], title: entry[:title])
+          curr.for << (
+            if entry[:movie].present?
+              Movie.merge(by: entry[:author], title: entry[:title])
+            else
+              Book.merge(author: entry[:author], title: entry[:title])
+            end
+          )
         end
       end
     end
