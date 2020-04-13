@@ -4,4 +4,6 @@ class Content
   property :ipfs_id, type: String
   property :url, type: String
   include Neo4j::Timestamps
+
+  has_many :in, :versions, type: :CVR
 end

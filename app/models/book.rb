@@ -6,6 +6,7 @@ class Book
 
   has_many :in, :contexts, type: :FOR
   has_one :out, :cover, type: :CVR, model_class: :Content
+  has_one :out, :repo, type: :RPO, model_class: :Content
   has_one :out, :content, type: :DAT
   has_many :out, :versions, type: :PUB
 end

@@ -5,7 +5,7 @@ namespace :export do
 
     basedir = "epubs-#{Time.now.iso8601}"
     q = Neo4j::ActiveBase.current_session.query(
-      "MATCH (n:Context)-[:SUB*]->(m:Context)-[f:FOR]->(book:Book) WHERE n.name = 'Hugo Award' AND n.type = 'award' AND (book:Book)-[:DAT]->() RETURN DISTINCT book"
+      "MATCH (n:Context)-[:SUB*]->(m:Context)-[f:FOR]->(book:Book) WHERE n.name = 'award' AND (book:Book)-[:RPO]->() RETURN DISTINCT book"
     )
     q.each do |ret|
       book = ret.book
@@ -33,10 +33,16 @@ namespace :export do
         system('ipfs', 'files', 'cp', "/ipfs/#{mimis.hashcode}", "#{datadir}/mimis.json")
       end
 
-      if book.content
+      if false && book.content
         puts "  Adding: #{datadir}/index.epub"
         system('ipfs', 'files', 'cp', "/ipfs/#{book.content.ipfs_id}", "#{datadir}/index.epub")
       end
+
+      if book.repo
+        puts "  Adding: #{datadir}/repo/"
+        system('ipfs', 'files', 'cp', "/ipfs/#{book.repo.ipfs_id}", "#{datadir}/repo")
+      end
+
       covers = book.versions(rel_length: :any).cover.to_a
       covers = [book.cover] if covers.empty?
       covers.select!{ |c| c&.ipfs_id.present? }
@@ -69,5 +75,47 @@ namespace :export do
     filename = "#{Rails.root}/tmp/award_links.#{Time.now}.json"
     puts "Writing: #{filename}"
     File.open(filename, 'w'){ |f| f.write(links.to_json) }
+  end
+
+  def fname(str)
+    str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')[0..254]
+  end
+
+  desc 'Export cover images to [dir] in book/by/#{author}/#{title}/covers/#{isbn}.#{ext}'
+  task(:covers, [:dir] => [:environment]) do |t, args|
+    require 'ipfs/client'
+
+    dir = args[:dir] || '../...'
+
+    q = Neo4j::ActiveBase.current_session.query(
+      "MATCH (book:Book) WHERE (book:Book)-[:CVR]->() OR (book:Book)-->()-[:CVR]->() RETURN DISTINCT book"
+    )
+    q.each do |ret|
+      book = ret.book
+
+      covers = book.versions(rel_length: :any).cover.to_a
+      covers = [book.cover] if covers.empty?
+      covers.select!{ |c| c&.ipfs_id.present? }
+      covers.uniq!(&:ipfs_id)
+      if covers.any?
+        covers.each.with_index(1) do |cover, idx|
+          cover.versions.each do |version|
+            filename = "#{version.isbn}.#{cover.mimetype.split('/').pop.split('+').first}"
+
+            dirname = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}/covers"
+            fullname = "#{dirname}/#{filename}"
+            if File.exists?(fullname)
+              puts "  Skipping: #{fullname} (#{cover.ipfs_id})"
+            else
+              puts "  Adding: #{fullname} (#{cover.ipfs_id})"
+              FileUtils.mkdir_p(dirname)
+              File.open(fullname, 'wb') do |file|
+                file.write(IPFS::Client.default.cat(cover.ipfs_id))
+              end
+            end
+          end
+        end
+      end
+    end
   end
 end

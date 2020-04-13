@@ -29,7 +29,7 @@ namespace :epubs do
             erb.call("#{template}/#{filename}.erb", filename)
           end
         end
-        system('zip', 'index.epub', '.', '-r')
+        system('zip', 'index.epub', '.', '-r9', '--exclude=.git/*')
       end
     }
 
@@ -47,5 +47,49 @@ namespace :epubs do
 
     dir = args[:dir] || '../.../book'
     spider.call(dir)
+  end
+
+  desc 'Read [dir]/#{author}/#{title} & add to git where needed'
+  task(:git, [:dir] => [:environment]) do |t, args|
+    dir = args[:dir] || '../.../book/by'
+    Dir.glob("#{dir}/*/*").each do |sub|
+      author, title = *sub.split('/').slice(-2, 2)
+      book = Book.find_by(author: author, title: title)
+      if book
+        puts "Adding: #{title}, by #{author}"
+
+        if book.repo
+          puts "  Repo Cached: #{book.repo.ipfs_id}"
+        else
+          FileUtils.chdir(sub) do
+            if Dir.glob('index.epub').any? && Dir.glob('.git').none?
+              puts "  Creating Git Structure"
+              system('git', 'init')
+              system('unzip', '-n', 'index.epub')
+              File.open('.gitignore', 'w') { |f| f.write("index.epub\n") }
+              system('chmod', '-R', 'a+r', '.') #sometimes has no permissions
+              system('git', 'add', '.')
+              system('git', 'commit', '-m', 'argus initial import 🦚')
+            end
+
+            if Dir.glob('.git').any?
+              print "  Caching IPLD CID: "
+              IO.popen(['git', 'push', 'ipvfs::', 'master'], err: [:child, :out]) do |io|
+                lines = io.readlines
+                line = lines.find{ |l| /^Pushed to IPFS as /.match?(l) }
+                unless line
+                  puts "No CID: Error On Import?"
+                else
+                  cid = line.match(/\.*ipfs:\/\/(.*)\e.*/)[1]
+                  puts cid
+                  system('ipfs', 'pin', 'add', '-r', cid)
+                  book.repo = Content.find_or_create_by(ipfs_id: cid)
+                end
+              end
+            end
+          end
+        end
+      end
+    end
   end
 end
