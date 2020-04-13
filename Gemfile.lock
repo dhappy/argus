@@ -178,7 +178,7 @@ GEM
     orm_adapter (0.5.0)
     os (1.0.1)
     public_suffix (4.0.3)
-    puma (4.3.1)
+    puma (4.3.3)
       nio4r (~> 2.0)
     rack (2.2.2)
     rack-proxy (0.6.5)
@@ -298,7 +298,7 @@ DEPENDENCIES
   mysql2
   neo4j!
   neo4j-rake_tasks
-  puma (~> 4.1)
+  puma (~> 4.3)
   rails (~> 6.0.2, >= 6.0.2.1)
   react-rails
   sass-rails (>= 6)
