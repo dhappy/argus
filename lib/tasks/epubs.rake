@@ -74,7 +74,7 @@ namespace :epubs do
 
             if Dir.glob('.git').any?
               print "  Caching IPLD CID: "
-              IO.popen(['git', 'push', 'ipvfs::', 'master'], err: [:child, :out]) do |io|
+              IO.popen(['git', 'push', 'ipfs::', 'master'], err: [:child, :out]) do |io|
                 lines = io.readlines
                 line = lines.find{ |l| /^Pushed to IPFS as /.match?(l) }
                 unless line

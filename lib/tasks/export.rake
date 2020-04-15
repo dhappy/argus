@@ -14,15 +14,21 @@ namespace :export do
         book.author.present? && book.title.present? \
         && book.title != 'untitled' && book.author != '(********)'
       )
-      path = %W[book entitled #{book.title}]
-      path = %w[book by] + [book.author, book.title] if book.author.present?
+      path = %W[book entitled]
+      path = %w[book by] + [book.author] if book.author.present?
       path.map!{ |p| p.gsub('%', '%25').gsub('/', '%2F') }
       datadir = "/#{basedir}/#{path.join('/')}"
+      title = book.title.gsub('%', '%25').gsub('/', '%2F')
 
-      puts "#{book.title}, by #{book.author}"
-      puts "  To: #{datadir}"
+      puts "#{book.title} by #{book.author}"
 
       system('ipfs', 'files', 'mkdir', '-p', datadir)
+
+      raise RuntimeError, "No Repo: #{book.title} by #{book.author}" unless book.repo
+
+      datadir = "#{datadir}/#{title}"
+      puts "  Adding: #{datadir}/"
+      system('ipfs', 'files', 'cp', "/ipfs/#{book.repo.ipfs_id}", datadir)
 
       Tempfile.open('mimis', "#{Rails.root}/tmp", encoding: 'ascii-8bit') do |file|
         file.write({
@@ -31,29 +37,6 @@ namespace :export do
         file.flush
         mimis = IPFS::Client.default.add(file.path)
         system('ipfs', 'files', 'cp', "/ipfs/#{mimis.hashcode}", "#{datadir}/mimis.json")
-      end
-
-      if false && book.content
-        puts "  Adding: #{datadir}/index.epub"
-        system('ipfs', 'files', 'cp', "/ipfs/#{book.content.ipfs_id}", "#{datadir}/index.epub")
-      end
-
-      if book.repo
-        puts "  Adding: #{datadir}/repo/"
-        system('ipfs', 'files', 'cp', "/ipfs/#{book.repo.ipfs_id}", "#{datadir}/repo")
-      end
-
-      covers = book.versions(rel_length: :any).cover.to_a
-      covers = [book.cover] if covers.empty?
-      covers.select!{ |c| c&.ipfs_id.present? }
-      covers.uniq!(&:ipfs_id)
-      if covers.any?
-        system('ipfs', 'files', 'mkdir', '-p', "#{datadir}/covers/")
-        covers.each.with_index(1) do |cover, idx|
-          filename = "#{idx}.#{cover.mimetype.split('/').pop.split('+').first}"
-          puts "  Adding: #{datadir}/covers/#{filename}"
-          system('ipfs', 'files', 'cp', "/ipfs/#{cover.ipfs_id}", "#{datadir}/covers/#{filename}")
-        end
       end
     end
   end
@@ -98,11 +81,16 @@ namespace :export do
       covers.select!{ |c| c&.ipfs_id.present? }
       covers.uniq!(&:ipfs_id)
       if covers.any?
+        parent = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}"
+        dirname = "#{parent}/covers"
+
         covers.each.with_index(1) do |cover, idx|
           cover.versions.each do |version|
-            filename = "#{version.isbn}.#{cover.mimetype.split('/').pop.split('+').first}"
-
-            dirname = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}/covers"
+            begin
+              filename = "#{version.isbn}.#{cover.mimetype.split('/').pop.split('+').first}"
+            rescue NoMethodError => err
+              raise RuntimeError, "Error Parsing Mimetype: #{mimetype} (#{cover.ipfs_id})"
+            end
             fullname = "#{dirname}/#{filename}"
             if File.exists?(fullname)
               puts "  Skipping: #{fullname} (#{cover.ipfs_id})"
@@ -114,6 +102,14 @@ namespace :export do
               end
             end
           end
+        end
+
+        Dir.exists?(parent) && FileUtils.chdir(parent) do
+          if !Dir.exists?('.git')
+            system('git init')
+          end
+          system('git', 'add', '.')
+          system('git', 'commit', '-m', 'images from isfdb 📷')
         end
       end
     end

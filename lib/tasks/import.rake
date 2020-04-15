@@ -1,22 +1,5 @@
 namespace :import do
   desc 'Import data from external sources'
-  task(pathtest: :environment) do |t, args|
-    paths = [
-      [:book, :by, 'Ursula K. LeGuinn', :AWoE],
-      [:book, :by, 'Robert Shea', 'Illuminatus!'],
-      [:book, :by, 'Issac Asimov', :Foundation]
-    ]
-    paths.each do |path|
-      cs = path.map{ |p| Context.merge(name: p) }
-      cs[0..-2].each.with_index do |c, i|
-        c.contexts << cs[i + 1]
-      end
-      book = Book.merge(title: path[-1], author: path[-1])
-      cs[-1].reference = book
-      book.cover = Content.merge(mimetype: 'image/jpeg', ipfs_id: rand())
-      book.content = Content.merge(mimetype: 'application/zip+epub', ipfs_id: rand())
-    end
-  end
 
   task(:gutenepubs, [:dir] => [:environment]) do |t, args|
     require 'zip'
