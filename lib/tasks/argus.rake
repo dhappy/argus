@@ -66,16 +66,18 @@ namespace :argus do
       unless book
         puts "Not Found"
       else
-        IO.popen(['git', 'push', 'ipfs::', 'master'], err: [:child, :out]) do |io|
-          lines = io.readlines
-          line = lines.find{ |l| /^Pushed to IPFS as /.match?(l) }
-          unless line
-            puts "No CID: Error On Import?"
-          else
-            cid = line.match(/\.*ipfs:\/\/(.*)\e.*/)[1]
-            puts cid
-            system('ipfs', 'pin', 'add', '-r', cid)
-            book.repo = Content.find_or_create_by(ipfs_id: cid)
+        FileUtils.chdir(dir) do
+          IO.popen(['git', 'push', 'ipfs::', 'master'], err: [:child, :out]) do |io|
+            lines = io.readlines
+            line = lines.find{ |l| /^Pushed to IPFS as /.match?(l) }
+            unless line
+              puts "No CID: Error On Import?"
+            else
+              cid = line.match(/\.*ipfs:\/\/(.*)\e.*/)[1]
+              puts cid
+              system('ipfs', 'pin', 'add', '-r', cid)
+              book.repo = Content.find_or_create_by(ipfs_id: cid)
+            end
           end
         end
       end

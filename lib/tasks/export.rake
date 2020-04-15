@@ -61,7 +61,8 @@ namespace :export do
   end
 
   def fname(str)
-    str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')[0..254]
+    str = str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')
+    str.mb_chars.limit(254).to_s # this causes compatability issues
   end
 
   desc 'Export cover images to [dir] in book/by/#{author}/#{title}/covers/#{isbn}.#{ext}'
@@ -77,9 +78,6 @@ namespace :export do
       book = ret.book
 
       covers = book.versions(rel_length: :any).cover.to_a
-      covers = [book.cover] if covers.empty?
-      covers.select!{ |c| c&.ipfs_id.present? }
-      covers.uniq!(&:ipfs_id)
       if covers.any?
         parent = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}"
         dirname = "#{parent}/covers"
