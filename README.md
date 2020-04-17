@@ -12,7 +12,7 @@ Assumes that a dump of [the Internet Speculative Fiction Database](http://www.is
 
 ### rake isfdb:awards
 
-Saves the award year and category into the Context graph.
+Saves the award year, category and books into the Context graph.
 
 ### rake isfdb:covers
 
@@ -45,3 +45,15 @@ Spiders and, for each repository that is found, commits with the given message.
 ### rake export:ipfs
 
 Creates a mutable filesystem with all the award winning books with content.
+
+### [/review?count=100&skip=0]
+
+For books without a `-[:RPO]->` link, check the directory `../.../trainpacks/` for files matching the pattern `*#{author}*#{title}*` or `*#{title}*#{author}*`.
+
+The page has an `⏩ Injest ⏭` button for each found file that will copy the given file to `../.../book/by/#{author}/#{title}/`.
+
+Zip and rar files are uncompressed. If they contain a single directory, its contents are copied up a level and it is removed.
+
+If there is a single (`html`|`epub`|`rtf`|`mobi`|`lit`) file it is renamed to `index.#{ext}`.
+
+`index.htm` is renamed to `index.html` which has an acceptably small chance of breaking a multipage document.

@@ -3,5 +3,6 @@ Rails.application.routes.draw do
   root to: 'context#index'
   get '/view/:uuid', to: 'book#show'
   get '/review', to: 'pages#review'
+  post '/injest', to: 'book#injest'
   get '/*path', to: 'context#index', constraints: { id: /.+/ }
 end

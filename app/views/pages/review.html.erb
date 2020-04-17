@@ -1,0 +1,11 @@
+<% if @books.none? %>
+  <p>Nothing Found</p>
+<% end %>
+<% @books.each do |uuid, row| %>
+  <p><%= row.book.title %> by <%= row.book.author %></p>
+  <ul>
+    <% row.possibilities.each do |file| %>
+      <li><%= file %>
+    <% end %>
+  </ul>
+<% end %>

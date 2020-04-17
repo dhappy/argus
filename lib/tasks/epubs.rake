@@ -34,7 +34,6 @@ namespace :epubs do
     }
 
     spider = ->(dir) {
-      puts dir
       Dir.glob("#{dir}/*").each do |sub|
         if File.directory?(sub)
           spider.call(sub)
@@ -62,14 +61,19 @@ namespace :epubs do
           puts "  Repo Cached: #{book.repo.ipfs_id}"
         else
           FileUtils.chdir(sub) do
-            if Dir.glob('index.epub').any? && Dir.glob('.git').none?
-              puts "  Creating Git Structure"
-              system('git', 'init')
-              system('unzip', '-n', 'index.epub')
-              File.open('.gitignore', 'w') { |f| f.write("index.epub\n") }
-              system('chmod', '-R', 'a+r', '.') #sometimes has no permissions
-              system('git', 'add', '.')
-              system('git', 'commit', '-m', 'argus initial import 🦚')
+            if File.exists?('index.epub')
+              unless Dir.exists?('.git')
+                system('git', 'init')
+              end
+              unless Dir.exists?('META-INF')
+                system('unzip', '-n', 'index.epub')
+                unless File.exists?('.gitignore')
+                  File.open('.gitignore', 'w') { |f| f.write("index.epub\n") }
+                end
+                system('chmod', '-R', 'a+r', '.') # some files have no permissions
+                system('git', 'add', '.')
+                system('git', 'commit', '-m', 'argus initial import 🦚')
+              end
             end
 
             if Dir.glob('.git').any?
