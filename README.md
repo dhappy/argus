@@ -52,8 +52,6 @@ For books without a `-[:RPO]->` link, check the directory `../.../trainpacks/` f
 
 The page has an `⏩ Injest ⏭` button for each found file that will copy the given file to `../.../book/by/#{author}/#{title}/`.
 
-Zip and rar files are uncompressed. If they contain a single directory, its contents are copied up a level and it is removed.
-
-If there is a single (`html`|`epub`|`rtf`|`mobi`|`lit`) file it is renamed to `index.#{ext}`.
+Zip and rar files are uncompressed. If there is a single (`html`|`epub`|`rtf`|`mobi`|`lit`) file it is renamed to `index.#{ext}`.
 
 `index.htm` is renamed to `index.html` which has an acceptably small chance of breaking a multipage document.

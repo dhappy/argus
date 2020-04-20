@@ -1,18 +1,19 @@
-import React from "react"
-import PropTypes from "prop-types"
-class Injest extends React.Component {
-  render () {
-    return (
-      <React.Fragment>
-        Filename: {this.props.filename}
-        Book: {this.props.bookId}
-      </React.Fragment>
-    );
-  }
-}
+import React, { useState } from "react"
+import { Button } from "antd"
+import 'antd/dist/antd.css'
 
-Injest.propTypes = {
-  filename: PropTypes.string,
-  bookId: PropTypes.string
-};
-export default Injest
+export default (props) => {
+  const [log, setLog] = useState()
+
+  const onClick = () => {
+    fetch('/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(props)
+    })
+    .then(res => res.text())
+    .then(setLog)
+  }
+
+  return log ? <pre>{log}</pre> : <Button onClick={onClick} type='primary' danger={props.existing}>⏩ Injest ⏭</Button>
+}

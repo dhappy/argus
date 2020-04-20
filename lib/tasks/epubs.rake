@@ -1,3 +1,6 @@
+require "#{Rails.root}/app/helpers/application_helper"
+include ApplicationHelper
+
 namespace :epubs do
   desc 'Spider [dir] & create epubs where needed'
   task(:create, [:dir] => [:environment]) do |t, args|
@@ -51,41 +54,45 @@ namespace :epubs do
   desc 'Read [dir]/#{author}/#{title} & add to git where needed'
   task(:git, [:dir] => [:environment]) do |t, args|
     dir = args[:dir] || '../.../book/by'
-    Dir.glob("#{dir}/*/*").each do |sub|
+    Dir.glob("#{dir}/*/*").each.with_index(1) do |sub, idx|
       author, title = *sub.split('/').slice(-2, 2)
       book = Book.find_by(author: author, title: title)
       if book
-        puts "Adding: #{title}, by #{author}"
+        puts "#{Time.now}: (#{ActionController::Base.helpers.number_with_delimiter(idx)}) Adding: #{title}, by #{author}"
 
-        if book.repo
-          puts "  Repo Cached: #{book.repo.ipfs_id}"
-        else
-          FileUtils.chdir(sub) do
-            if File.exists?('index.epub')
-              unless Dir.exists?('.git')
-                system('git', 'init')
-              end
-              unless Dir.exists?('META-INF')
-                system('unzip', '-n', 'index.epub')
-                unless File.exists?('.gitignore')
-                  File.open('.gitignore', 'w') { |f| f.write("index.epub\n") }
-                end
-                system('chmod', '-R', 'a+r', '.') # some files have no permissions
-                system('git', 'add', '.')
-                system('git', 'commit', '-m', 'argus initial import 🦚')
-              end
+        FileUtils.chdir(sub) do
+          unless Dir.exists?('.git')
+            system('git', 'init')
+          end
+
+          if File.exists?('index.epub')
+            unless Dir.exists?('META-INF')
+              system('unzip', '-n', 'index.epub')
             end
 
-            if Dir.glob('.git').any?
-              print "  Caching IPLD CID: "
-              IO.popen(['git', 'push', 'ipfs::', 'master'], err: [:child, :out]) do |io|
-                lines = io.readlines
-                line = lines.find{ |l| /^Pushed to IPFS as /.match?(l) }
-                unless line
-                  puts "No CID: Error On Import?"
-                else
-                  cid = line.match(/\.*ipfs:\/\/(.*)\e.*/)[1]
-                  puts cid
+            unless File.exists?('.gitignore')
+              File.open('.gitignore', 'w') { |f| f.write("index.epub\n") }
+            end
+          end
+
+
+          system('chmod', '-R', 'a+r', '.') # some files have no permissions
+
+
+          if Dir.glob('.git').any?
+            system('git', 'add', '.')
+            system('git', 'commit', '-m', 'argus initial import 🦚')
+
+            print "  Caching IPFS CID: "
+            IO.popen(['git', 'push', 'ipfs::', 'master'], err: [:child, :out]) do |io|
+              lines = io.readlines
+              line = lines.find{ |l| /^Pushed to IPFS as /.match?(l) }
+              unless line
+                puts "No CID: Error On Import?"
+              else
+                cid = line.match(/\.*ipfs:\/\/(.*)\e.*/)[1]
+                puts cid
+                if book.repo&.ipfs_id != cid
                   system('ipfs', 'pin', 'add', '-r', cid)
                   book.repo = Content.find_or_create_by(ipfs_id: cid)
                 end

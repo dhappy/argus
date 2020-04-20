@@ -7,13 +7,17 @@ class PagesController < ApplicationController
     )
     @books = {}
     q.each do |ret|
+      book = ret.book
+      existing = Dir.glob(
+        "#{Rails.root}/../book/by/#{helpers.fname(book.author)}/#{helpers.fname(book.title)}/index.*"
+      )
+
       FileUtils.chdir("#{Rails.root}/../.../trainpacks/") do
-        book = ret.book
         possibilities = Dir.glob("*#{book.author}*#{book.title}*")
         possibilities += Dir.glob("*#{book.title}*#{book.author}*")
         if(possibilities.any?)
           @books[book.uuid] = OpenStruct.new(
-            book: book, possibilities: possibilities
+            book: book, existing: existing, possibilities: possibilities
           )
         end
       end

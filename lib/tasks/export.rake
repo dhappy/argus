@@ -5,10 +5,12 @@ namespace :export do
 
     basedir = "epubs-#{Time.now.iso8601}"
     q = Neo4j::ActiveBase.current_session.query(
-      "MATCH (n:Context)-[:SUB*]->(m:Context)-[f:FOR]->(book:Book) WHERE n.name = 'award' AND (book:Book)-[:RPO]->() RETURN DISTINCT book"
+      "MATCH (n:Context)-[:SUB*]->(m:Context)-[f:FOR]->(book:Book) WHERE n.type = 'award' AND n.name='Hugo Award' AND (book:Book)-[:RPO]->() RETURN DISTINCT book"
     )
+    idx = 0 # .with_index(1) fails
     q.each do |ret|
       book = ret.book
+      idx += 1
 
       next unless(
         book.author.present? && book.title.present? \
@@ -20,11 +22,11 @@ namespace :export do
       datadir = "/#{basedir}/#{path.join('/')}"
       title = book.title.gsub('%', '%25').gsub('/', '%2F')
 
-      puts "#{book.title} by #{book.author}"
+      combined = "#{book.title} by #{book.author}"
+      raise RuntimeError, "No Repo: #{combined}" unless book.repo
 
+      puts "#{ActionController::Base.helpers.number_with_delimiter(idx)}: #{combined} (#{book.repo.ipfs_id})"
       system('ipfs', 'files', 'mkdir', '-p', datadir)
-
-      raise RuntimeError, "No Repo: #{book.title} by #{book.author}" unless book.repo
 
       datadir = "#{datadir}/#{title}"
       puts "  Adding: #{datadir}/"
