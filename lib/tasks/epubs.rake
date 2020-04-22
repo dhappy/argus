@@ -1,6 +1,3 @@
-require "#{Rails.root}/app/helpers/application_helper"
-include ApplicationHelper
-
 namespace :epubs do
   desc 'Spider [dir] & create epubs where needed'
   task(:create, [:dir] => [:environment]) do |t, args|

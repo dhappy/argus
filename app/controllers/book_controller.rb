@@ -48,7 +48,7 @@ class BookController < ApplicationController
           FileUtils.rm(filename)
         end
 
-        %w[htm html epub rtf mobi lit txt pdf doc].each do |type|
+        %w[htm html epub rtf mobi lit txt pdf doc azw3].each do |type|
           files = Dir.glob("*.#{type}")
 
           if files.length == 1 && !File.exists?("index.#{type}")
