@@ -5,6 +5,7 @@
 #   git config --global core.excludesfile '~/.gitignore_global'
 
 db/neo4j/
+.rake_tasks~
 
 # Ignore bundler config.
 /.bundle

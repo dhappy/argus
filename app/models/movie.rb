@@ -6,4 +6,5 @@ class Movie
 
   has_many :in, :contexts, type: :FOR
   has_one :out, :cover, type: :CVR, model_class: :Content
+  has_many :in, :nominations, rel_class: :Nomination, unique: true
 end

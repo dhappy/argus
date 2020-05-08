@@ -2,7 +2,7 @@
 
 This repository contains primarily rake tasks used to create the data structures that [Mïmis](//github.com/dhappy/mimis) consumes.
 
-The heart of the program is a Neo4j database with the structure `(:Context)-[:SUB*]->(:Context)-[:FOR]->(:Book|Movie)-[:PUB]->(:Version)-[:CVR]->(:Content)`.
+The heart of the program is a Neo4j database with the structure `(:Award)-[:YR]->(:Year)-[:CAT]->(:Category)-[:NOM]->(:Book|:Movie)` and `(:Series)-[:SUB]->(:Series)-[:PART]->(:Book|:Movie)`
 
 The work of populating the graph is done by various rake tasks.
 
