@@ -103,23 +103,21 @@ namespace :isfdb do
 
   desc 'Import information about series'
   task(series: :environment) do |t, args|
-    root = Context.merge(name: '∅')
-    base = (
-      root.subcontexts.find_or_create_by(name: :book)
-      .subcontexts.find_or_create_by(name: :by)
-    )
+    serieses = {}
     client = Mysql2::Client.new(
       host: 'localhost', database: 'isfdb'
     )
-    pubs = client.query( # where series_parent is null
+    pubs = client.query(
       (
         'SELECT DISTINCT' \
+        + ' series.series_id AS sid,' \
         + ' series_title AS series,' \
         + ' title_title AS title,' \
         + ' title_ttype AS ttype,' \
         + ' title_copyright AS cpdate,' \
         + ' title_seriesnum as snum,' \
         + ' title_seriesnum_2 as snum2,' \
+        + ' author_legalname AS legal,' \
         + ' author_canonical AS author' \
         + ' FROM series, titles, canonical_author, authors' \
         + ' WHERE titles.series_id=series.series_id' \
@@ -127,39 +125,118 @@ namespace :isfdb do
         + ' AND canonical_author.author_id=authors.author_id' \
         + ' AND series_parent IS NULL' \
         + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
+        # + ' LIMIT 100' \
       ),
       symbolize_keys: true
     )
-    pubs.each do |pub|
-      title = Nokogiri::HTML.parse(entry[:title]).text
+    puts "Serializing Tree #{pubs.size} #{'Root'.pluralize(pubs.size)}"
+    pubs.each_with_index do |pub, idx|
+      next if Series.find_by(isfdbID: pub[:sid])
+      title = Nokogiri::HTML.parse(pub[:title]).text
       next if title == 'untitled' # an artist or editor award
-      author = Nokogiri::HTML.parse(entry[:author]).text
+      author = Nokogiri::HTML.parse(pub[:author]).text
       author, pseudo = author.split('^') if author.include?('^')
       authors = author.split('+').join(' & ')
-      book = Book.find_or_create_by(authors: authors, title: title)
       art = (
-        if entry[:movie].present?
+        if pub[:movie].present?
           Movie.find_or_create_by(by: authors, title: title)
+          .tap do |book|
+            movie.alias = pseudo
+            movie.copyright ||= pub[:cpdate]
+            movie.save
+          end
         else
           Book.find_or_create_by(authors: authors, title: title)
           .tap do |book|
             book.alias = pseudo
-            book.copyright ||= entry[:cpdate]
+            book.copyright ||= pub[:cpdate]
             book.types = [] unless book.types
-            book.types = (JSON.parse(book.types)).push(entry[:ttype]).uniq
+            book.types = (JSON.parse(book.types)).push(pub[:ttype]).uniq
             book.save
           end
         end
       )
       series = Series.find_or_create_by(
-        title: Nokogiri::HTML.parse(entry[:series]).text
+        title: Nokogiri::HTML.parse(pub[:series]).text, isfdbID: pub[:sid]
       )
-      unless art.series.include?(series)
-        puts "Linking: #{series.title}: #{book.copyright}: #{art}"
-        Contains.create(
-          from_node: series, to_node: art,
-          rank: "#{entry[:snum]}#{entry[:snum] ? '.' + entry[:snum] : ''}",
-        )
+      rank = "#{pub[:snum]}#{pub[:snum2] ? ".#{pub[:snum2]}" : ''}"
+      if art.series.include?(series)
+        puts "  #{idx}/#{pubs.size}:Skipping:#{rank}: #{series.title}: #{art.copyright}: #{art}"
+      else
+        puts "   #{idx}/#{pubs.size}:Linking:#{rank}: #{series.title}: #{art.copyright}: #{art}"
+        Contains.create(from_node: series, to_node: art, rank: rank)
+      end
+    end
+
+    puts 'Getting direct children of roots'
+    sids = client.query( # nodes with parents just imported
+      (
+        'SELECT DISTINCT' \
+        + ' posts.series_id AS id' \
+        + ' FROM series AS pres, series AS posts' \
+        + ' WHERE pres.series_parent IS NULL' \
+        + ' AND pres.series_id = posts.series_parent' \
+      ),
+      symbolize_keys: true
+    )
+    sids = sids.map{ |row| row[:id] }
+    puts "Got Serial IDs  of Children: #{sids.size} #{'ID'.pluralize(sids.size)}"
+    pubs = client.query( # where series_parent isn't null, but parent has no parents
+      (
+        'SELECT DISTINCT' \
+        + ' series.series_id AS sid,' \
+        + ' series_title AS series,' \
+        + ' title_title AS title,' \
+        + ' title_ttype AS ttype,' \
+        + ' title_copyright AS cpdate,' \
+        + ' title_seriesnum as snum,' \
+        + ' title_seriesnum_2 as snum2,' \
+        + ' series_parent AS parent,' \
+        + ' series_parent_position AS pos,' \
+        + ' author_canonical AS author' \
+        + ' FROM series, titles, canonical_author, authors' \
+        + ' WHERE titles.series_id=series.series_id' \
+        + ' AND titles.title_id=canonical_author.title_id' \
+        + ' AND canonical_author.author_id=authors.author_id' \
+        + " AND series.series_id IN (#{sids.join(?,)})" \
+        + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
+        + ' ORDER BY series_parent' \
+      ),
+      symbolize_keys: true
+    )
+    pubs.each_with_index do |pub, idx|
+      title = Nokogiri::HTML.parse(pub[:title]).text
+      next if title == 'untitled' # an artist or editor award
+      author = Nokogiri::HTML.parse(pub[:author]).text
+      author, pseudo = author.split('^') if author.include?('^')
+      authors = author.split('+').join(' & ')
+      parent = Series.find_by(isfdbID: pub[:parent])
+      raise RuntimeError, "Missing Parent: #{pub[:parent]}" unless parent
+      art = (
+        if pub[:movie].present?
+          Movie.find_or_create_by(by: authors, title: title)
+        else
+          Book.find_or_create_by(authors: authors, title: title)
+          .tap do |book|
+            book.alias = pseudo
+            book.copyright ||= pub[:cpdate]
+            book.types = [] unless book.types
+            book.types = (JSON.parse(book.types)).push(pub[:ttype]).uniq
+            book.save
+          end
+        end
+      )
+      series = Series.find_or_create_by(
+        title: Nokogiri::HTML.parse(pub[:series]).text, isfdbID: pub[:sid]
+      )
+      if art.series.include?(series)
+        puts "  #{idx}/#{pubs.size}:Skipping: #{series.title}: #{art.copyright}: #{art}"
+      else
+        puts "   #{idx}/#{pubs.size}:Linking: #{series.title}: #{art.copyright}: #{art}"
+        unless parent.series.include?(series)
+          Contains.create(from_node: parent, to_node: series, rank: pub[:pos])
+        end
+        Contains.create(from_node: series, to_node: art, rank: pub[:snum])
       end
     end
   end

@@ -1,4 +1,4 @@
-class Nomination
+class Nominated
   include Neo4j::ActiveRel
   before_save :translate_result
 

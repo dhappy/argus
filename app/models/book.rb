@@ -15,7 +15,8 @@ class Book
   has_one :out, :repo, type: :RPO, model_class: :Content
   has_one :out, :content, type: :DAT
   has_many :out, :versions, type: :PUB
-  has_many :in, :nominations, rel_class: :Nomination, unique: true
+  has_many :in, :nominations, rel_class: :Nominated, unique: true
+  has_many :in, :series, rel_class: :Contains, unique: true
 
   def to_s; "#{self.title} by #{self.authors}"; end
 end
