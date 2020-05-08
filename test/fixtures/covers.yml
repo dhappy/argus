@@ -1,0 +1,11 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  mimetype: MyString
+  ipfsID: MyString
+  url: MyString
+
+two:
+  mimetype: MyString
+  ipfsID: MyString
+  url: MyString

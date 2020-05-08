@@ -2,7 +2,7 @@
 
 This repository contains primarily rake tasks used to create the data structures that [Mïmis](//github.com/dhappy/mimis) consumes.
 
-The heart of the program is a Neo4j database with the structure `(:Award)-[:YR]->(:Year)-[:CAT]->(:Category)-[:NOM]->(:Book|:Movie)` and `(:Series)-[:SUB]->(:Series)-[:PART]->(:Book|:Movie)`
+The heart of the program is a Neo4j database with the structure `(:Award)-[:YR]->(:Year)-[:CAT]->(:Category)-[:NOM]->(:Book|:Movie)` and `(:Series)-[:SUB]->(:Series)-[:PART]->(:Book|:Movie)` encapsulating the Awards and Series information from the [isfdb](//isfdb.org).
 
 The work of populating the graph is done by various rake tasks.
 
@@ -12,7 +12,11 @@ Assumes that a dump of [the Internet Speculative Fiction Database](http://www.is
 
 ### rake isfdb:awards
 
-Saves the award year, category and books into the Context graph.
+Saves the award year, category and books into the graph.
+
+### rake isfdb:series
+
+Saves the series nesting, contents and order into the graph.
 
 ### rake isfdb:covers
 
