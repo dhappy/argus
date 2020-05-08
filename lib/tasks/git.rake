@@ -51,13 +51,19 @@ namespace :git do
           FileUtils.cp_r("#{template}/#{filename}", './')
         end
       end
-      %w[content.opf toc.ncx cover.svg].each do |filename|
+      %w[content.opf toc.ncx].each do |filename|
         if File.exists?(filename)
           puts "  Skipping: #{filename}"
         else
           erb.call("#{template}/#{filename}.erb", filename)
         end
       end
+      if (Dir.glob('cover*') + Dir.glob('covers/*')).any?
+        puts "  Skipping: cover.svg"
+      else
+        erb.call("#{template}/cover.svg.erb", 'cover.svg')
+      end
+
       system('zip', 'index.epub', '.', '-r9', '--exclude=.git/*')
     }
 
@@ -96,6 +102,10 @@ namespace :git do
             if File.exists?('index.html')
               create.call(book)
             end
+          end
+
+          if Dir.glob('*html').any? && (Dir.glob('cover*') + Dir.glob('covers/*')).empty?
+            create.call(book)
           end
 
           system('git', 'add', '.')

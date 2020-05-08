@@ -68,7 +68,7 @@ namespace :export do
   end
 
   desc 'Export cover images to [dir] in book/by/#{author}/#{title}/covers/#{isbn}.#{ext}'
-  task(:covers, [:dir] => [:environment]) do |t, args|
+  task(:coverimgs, [:dir] => [:environment]) do |t, args|
     require 'ipfs/client'
 
     dir = args[:dir] || '../...'
@@ -110,6 +110,40 @@ namespace :export do
           end
           system('git', 'add', '.')
           system('git', 'commit', '-m', 'images from isfdb 📷')
+        end
+      end
+    end
+  end
+
+  desc 'Export cover images to mfs://covers-{Time.now.iso8601}'
+  task(:covers, [:dir] => [:environment]) do |t, args|
+    require 'ipfs/client'
+
+    dir = args[:dir] || "/covers-#{Time.now.iso8601}"
+
+    q = Neo4j::ActiveBase.current_session.query(
+      "MATCH (book:Book) WHERE (book:Book)-[:CVR]->() OR (book:Book)-->()-[:CVR]->() RETURN DISTINCT book"
+    )
+    q.each do |ret|
+      book = ret.book
+
+      covers = book.versions(rel_length: :any).cover.to_a
+      if covers.any?
+        parent = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}"
+        dirname = "#{parent}/covers"
+
+        covers.each.with_index(1) do |cover, idx|
+          cover.versions.each do |version|
+            begin
+              filename = "#{version.isbn}.#{cover.mimetype.split('/').pop.split('+').first}"
+            rescue NoMethodError => err
+              raise RuntimeError, "Error Parsing Mimetype: #{mimetype} (#{cover.ipfs_id})"
+            end
+            fullname = "#{dirname}/#{filename}"
+            puts "  Adding: #{fullname} (#{cover.ipfs_id})"
+            IPFS::Client.default.files.mkdir(dirname, { parents: true })
+            IPFS::Client.default.files.cp(`/ipfs/${cover.ipfs_id}`, fullname)
+          end
         end
       end
     end
