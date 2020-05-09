@@ -2,16 +2,14 @@ desc 'Import from the Internet Speculative Fiction Database'
 namespace :isfdb do
   DB = Sequel.connect('mysql2://localhost/isfdb')
 
-  def workFor(title:, creators:, legalName: nil, isMovie: false, copyright: nil, type: nil)
-    puts "Creating w/ #{creators}"
+  def workFor(title:, creators:, legalname: nil, isMovie: false, copyright: nil, type: nil)
     creators = Nokogiri::HTML.parse(creators).text
     creators, altName = creators.split('^') if creators.include?('^')
     creators = creators.split('+').join(' & ') # when saved as an array the uniqeness constraint doesn't work
-    puts "Creating w/ #{creators}"
     creators = Creators.find_or_create_by(name: creators)
     creators.aliases = [] unless creators.aliases
     creators.aliases = (JSON.parse(creators.aliases)).push(altName).uniq if altName
-    creators.legalName = legalName if legalName
+    creators.legalname = legalname if legalname
     creators.save
     (
       if isMovie
@@ -69,7 +67,7 @@ namespace :isfdb do
         title: Nokogiri::HTML.parse(type[:name]).text,
         shortname: Nokogiri::HTML.parse(type[:shortname]).text,
       )
-      puts "Award: #{award.shortname}"
+      puts "#{Time.now.iso8601}: Award: #{award.shortname}"
 
       # The awards table duplicates both the title and author columns, so
       # there's no simple way to get the canonical_author record.
@@ -111,9 +109,9 @@ namespace :isfdb do
         )
 
         if work.nominations.include?(category)
-          puts "  #{idx}/#{entries.count}: Skipping: #{award.title}: #{year.number}: #{work}"
+          puts "  #{Time.now.iso8601}: #{idx}/#{entries.count}: Skipping: #{award.title}: #{year.number}: #{work}"
         else
-          puts "   #{idx}/#{entries.count}: Linking: #{award.title}: #{year.number}: #{work}"
+          puts "  #{Time.now.iso8601}: #{idx}/#{entries.count}:  Linking: #{award.title}: #{year.number}: #{work}"
           Nominated.create(
             from_node: category, to_node: work, result: entry[:level]
           )
@@ -235,7 +233,7 @@ namespace :isfdb do
     pubs.each do |pub|
       next if pub[:title] == 'untitled' # an artist or editor award
       book = workFor(
-        title: pub[:title], creators: pub[:author], legalName: pub[:legal],
+        title: pub[:title], creators: pub[:author], legalname: pub[:legal],
         copyright: pub[:cpdate], type: pub[:ttype],
       )
 
@@ -268,7 +266,7 @@ namespace :isfdb do
             end
           end
           mimetype = meta[:mimetype] || "image/#{glob.first.split('.').slice(-1)[0]}" # often wrong, but rarely ambiguous
-          puts "  Got Size: #{meta[:width]}✕#{meta[:height]} (#{mimetype})"
+          puts "  Got Size: #{meta[:width]}✕#{meta[:height]} (#{cid})"
           
           version.cover = Cover.find_or_create_by(
             cid: cid, width: meta[:width], height: meta[:height], mimetype: mimetype

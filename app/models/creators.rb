@@ -1,7 +1,7 @@
 class Creators
   include Neo4j::ActiveNode
   property :name, type: String
-  property :legalName, type: String
+  property :legalname, type: String
   property :aliases, type: String
   include Neo4j::Timestamps
 

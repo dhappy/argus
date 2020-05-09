@@ -45,45 +45,114 @@ namespace :export do
 
   desc 'Export awards context tree to CBOR-DAG'
   task(awards: :environment) do |t, args|
-    q = Neo4j::ActiveBase.current_session.query(
-      "MATCH path = (a:Award)-->(y:Year)-->(c:Category)-[n:NOM]->(b:Book) RETURN DISTINCT path"
-    )
+    root = 'QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn'
 
-    def procBook(book)
-      {
-        title: book.title, uuid: book.uuid,
-        creators: {
-          name: book.creators.name, legalname: book.creators.legalname, 
-          names: book.creators.names, aliases: book.creators.aliases,
-        },
-        covers: [], repo: 'CID',
+    procCreators = ->(creators) {{
+      name: creators.name, legalname: creators.legalname, 
+      names: creators.names, aliases: JSON.parse(creators.aliases),
+    }}
+
+    procBook = ->(book, pre) {
+      obj = {}
+      name = "#{pre ? "#{pre}: " : ''}#{book.to_s}"
+      obj[name] = {
+        creators: procCreators.call(book.creators), title: book.title, uuid: book.uuid,
       }
+      obj
+    }
+
+    procCat = ->(category) {
+      nominees = {}
+      results = category.nominees.each_rel.map{ |n| n.result }
+      category.nominees.each_with_rel do |book, nom|
+        procBook.call(book, nom.result).each do |name, obj|
+          nominees[name] = obj
+        end
+      end
+      nominees
+    }
+
+    procYear = ->(year) {
+      year.categories.reduce({}){ |obj, c| obj[c.title] = procCat.call(c); obj }
+    }
+
+    # 'shortname'/'uuid' and title could collide: unlikely
+    links = Award.all.reduce({}) do |obj, award|
+      obj[award.title] = { shortname: award.shortname }
+      award.years.reduce(obj[award.title]){ |obj, y| obj[y.number] = procYear.call(y); obj }
+      obj
     end
 
-    def procCat(category)
-      {
-        title: category.title, uuid: category.uuid,
-        nominees: category.nominees.map(procBook)
-      }
+    cid = nil
+    IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
+      cmd.puts JSON.generate(links)
+      cmd.close_write
+      cid = cmd.readlines.last
+      puts "cid:#{cid}"
+      unless $?.success? && cid
+        puts "Error: IPFS DAG PUT"
+        next
+      end
+    end
+  end
+
+  desc 'Export awards context tree to UnixFS Protobuf'
+  task(awardsfs: :environment) do |t, args|
+    root = 'QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn'
+
+    procCreators = ->(creators) {{
+      name: creators.name, legalname: creators.legalname, 
+      names: creators.names, aliases: JSON.parse(creators.aliases),
+    }}
+
+    procBook = ->(book, path) {
+      obj = {}
+      name = book.to_s
+      bookCID = book.repo || 'QmVPqdGVWEN7G4KnpDXRsQeNqZehy5AXjbStNokAcPbSBj'
+      puts "#{path} #{name}"
+      IO.popen(['ipfs', 'object', 'patch', 'add-link', '-p', root, "#{path} #{name}", bookCID], 'r+') do |cmd|
+        root = cmd.readlines.last.chomp
+        puts "cid:#{root}"
+        puts "Error: IPFS OBJ PATCH" unless $?.success?
+      end
+      bookCID
+    }
+
+    procCat = ->(category, path) {
+      nominees = {}
+      results = category.nominees.each_rel.map{ |n| n.result }
+      if results.size == results.compact.uniq.size # there's a complete set of keys
+        category.nominees.each_with_rel do |book, nom|
+          nominees[nom.result] = procBook.call(book, "#{path}/#{nom.result}:")
+        end
+      else
+        category.nominees.each.with_index(1){ |b, i| nominees[i] = procBook.call(b, "#{path}/#{i}:") }
+      end
+      nominees
+    }
+
+    procYear = ->(year, path) {
+      year.categories.reduce({}){ |obj, c| obj[c.title] = procCat.call(c, "#{path}/#{fname(c.title)}"); obj }
+    }
+
+    # 'shortname'/'uuid' and title could collide: unlikely
+    links = Award.all.reduce({}) do |obj, award|
+      obj[award.title] = { shortname: award.shortname }
+      award.years.reduce(obj[award.title]){ |obj, y| obj[y.number] = procYear.call(y, "#{fname(award.title)}/#{y.number}"); obj }
+      obj
     end
 
-    def procYear(year)
-      {
-        number: year.number, uuid: year.uuid,
-        categories: year.categories.map(procCat)
-      }
+    cid = nil
+    IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
+      cmd.puts JSON.generate(links)
+      cmd.close_write
+      cid = cmd.readlines.last
+      puts "cid:#{cid}"
+      unless $?.success? && cid
+        puts "Error: IPFS DAG PUT"
+        next
+      end
     end
-
-    links = q.map do |ret|
-      nodes = ret.path.nodes
-      award = Award.find(nodes.shift.properties[:uuid])
-
-      {
-        title: award.title, shortname: award.shortname, uuid: award.uuid,
-        years: award.years.map(procYear)
-      }
-    end
-    byebug
   end
 
   def fname(str)
@@ -98,14 +167,14 @@ namespace :export do
     dir = args[:dir] || '../...'
 
     q = Neo4j::ActiveBase.current_session.query(
-      "MATCH (book:Book) WHERE (book:Book)-[:CVR]->() OR (book:Book)-->()-[:CVR]->() RETURN DISTINCT book"
+      "MATCH (book:Book) WHERE (book:Book)-->()-[:CVR]->() RETURN DISTINCT book"
     )
     q.each do |ret|
       book = ret.book
 
       covers = book.versions(rel_length: :any).cover.to_a
       if covers.any?
-        parent = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}"
+        parent = "#{dir}/book/by/#{fname(book.creators.name)}/#{fname(book.title)}"
         dirname = "#{parent}/covers"
 
         covers.each.with_index(1) do |cover, idx|

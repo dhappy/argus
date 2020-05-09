@@ -11,7 +11,7 @@ The work of populating the graph and writing to IPFS is done by various rake tas
 * `git clone https://github.com/dhappy/argus`
 * `cd argus`
 * `alias isotime='date +%Y-%m-%d@%H:%M:%S%:z'`
-* `function rlog() { rake $1 | tee log/$1.$(isotime).log }`
+* `function rlog() { rake $1 | tee log/$1.$(isotime).log; }`
 * `screen`
 * `rlog isfdb:awards`
 * `⌘^a c`
@@ -20,6 +20,7 @@ The work of populating the graph and writing to IPFS is done by various rake tas
 * `rlog isfdb:awards`
 * `⌘^a d`
 * `screen -r` # after many hours have passed and see how much data has been integrated into the graph.
+* `rake export:awards` # after everything is loaded
 
 ## Rake
 
