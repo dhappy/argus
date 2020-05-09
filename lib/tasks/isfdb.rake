@@ -3,9 +3,11 @@ namespace :isfdb do
   DB = Sequel.connect('mysql2://localhost/isfdb')
 
   def workFor(title:, creators:, legalName: nil, isMovie: false, copyright: nil, type: nil)
+    puts "Creating w/ #{creators}"
     creators = Nokogiri::HTML.parse(creators).text
     creators, altName = creators.split('^') if creators.include?('^')
     creators = creators.split('+').join(' & ') # when saved as an array the uniqeness constraint doesn't work
+    puts "Creating w/ #{creators}"
     creators = Creators.find_or_create_by(name: creators)
     creators.aliases = [] unless creators.aliases
     creators.aliases = (JSON.parse(creators.aliases)).push(altName).uniq if altName
@@ -22,14 +24,14 @@ namespace :isfdb do
       work.creators = creators
       work.copyright ||= copyright
       work.types = [] unless work.types
-      work.types = (JSON.parse(work.types)).push(type).uniq
+      work.types = (JSON.parse(work.types)).push(type).uniq if type
       work.save
     end
   end
 
   # Guarantee this is a valid Unix path
   def fname(str)
-    if(/\//.test(str) || /%2f/i.test(str)) # contains / or %2F, so decode anything containing %2F
+    if(str =~ /\// || str =~ /%2f/i) # contains / or %2F, so decode anything containing %2F
       str = str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')
     end
     str.mb_chars.limit(254).to_s # this causes compatability issues
@@ -239,23 +241,42 @@ namespace :isfdb do
 
       if pub[:isbn].present?
         version = book.versions.find_or_create_by(isbn: pub[:isbn])
-        if (glob = Dir.glob('../book/by/#{fname(book.creators.name)}/#{fname(book.title)}/covers/pub[:isbn].*')).any?
-          byebug
+        pat = "../book/by/#{fname(book.creators.name)}/#{fname(book.title)}/covers/#{pub[:isbn]}.*"
+        puts "Globbing: #{pat}"
+        if (glob = Dir.glob(pat)).any?
           cid = nil
-          IO.popen(['ipfs', 'add', glob.first.filename], 'r+') do |cmd|
+          IO.popen(['ipfs', 'add', glob.first], 'r+') do |cmd|
             out = cmd.readlines.last
             cid = out&.split.try(:[], 1)
             unless $?.success? && cid
-              puts "Error: IPFS Import of #{glob.first.filename})"
+              puts "Error: IPFS Import of #{glob.first})"
               next
             end
           end
-          version.cover = Cover.find_or_create_by(ipfs_cid: cid) 
+          meta = nil
+          IO.popen(['exiftool', '-s', '-ImageWidth', '-ImageHeight', '-Mimetype', glob.first], 'r+') do |cmd|
+            meta = cmd.readlines.reduce({}) do |size, line|
+              if match = /^(?<prop>[^:]+\S)\s+:\s+(?<val>\S.+)\r?\n?$/.match(line)
+                prop = match[:prop].sub(/^Image/, '').downcase
+                size[prop.to_sym] = match[:val]
+              end
+              size
+            end
+            unless $?.success?
+              puts "Error: EXIF Metadata of #{glob.first})"
+              next
+            end
+          end
+          mimetype = meta[:mimetype] || "image/#{glob.first.split('.').slice(-1)[0]}" # often wrong, but rarely ambiguous
+          puts "  Got Size: #{meta[:width]}✕#{meta[:height]} (#{mimetype})"
+          
+          version.cover = Cover.find_or_create_by(
+            cid: cid, width: meta[:width], height: meta[:height], mimetype: mimetype
+          ) 
         elsif pub[:image].present?
           version.cover = Cover.find_or_create_by(url: pub[:image])
         end
       end
-
     end
   end
 end

@@ -1,6 +1,6 @@
 namespace :export do
   desc 'Export award winners to IPFS'
-  task(ipfs: :environment) do |t, args|
+  task(mfs: :environment) do |t, args|
     require 'ipfs/client'
 
     basedir = "epubs-#{Time.now.iso8601}"
@@ -43,23 +43,37 @@ namespace :export do
     end
   end
 
-  desc 'Export awards context tree to JSON'
+  desc 'Export awards context tree to CBOR-DAG'
   task(awards: :environment) do |t, args|
     q = Neo4j::ActiveBase.current_session.query(
-      "MATCH path = (n:Context)-[:SUB]->(p:Context)-[s:SUB*]->(m:Context)-[f:FOR]->(o:Book) WHERE n.name = '∅' AND p.name = 'award' RETURN DISTINCT path"
+      "MATCH path = (a:Award)-->(y:Year)-->(c:Category)-[n:NOM]->(b:Book) RETURN DISTINCT path ORDER BY n.result"
     )
     links = q.map do |ret|
-      book = Book.find(ret.path.nodes.pop.properties[:uuid])
       nodes = ret.path.nodes
-      nodes.shift # remove ∅
-      from = nodes.map{ |n| n.properties[:name] }
-      to = %W[book entitiled #{book.title}]
-      to = %w[book by] + [book.author, book.title] if book.author.present?
-      { from: from, to: to, type: :link }
+      award = Award.find(nodes.shift.properties[:uuid])
+
+      {
+        title: award.title, shortname: award.shortname,
+        years: award.years.map do |year| {
+          number: year.number, uuid: category.uuid,
+          year.categories.map do |category| {
+            title: category.title, uuid: category.uuid,
+            nominees: category.nominees.map do |book|
+              {
+                uuid: book.uuid,
+                title: book.title, 
+                creators: {
+                  name: book.creators.name, legalname: book.creators.legalname, 
+                  names: book.creators.names, aliases: book.creators.aliases,
+                },
+                covers: [], repo: 'CID',
+              }
+            end,
+          } end
+        } end
+      }
     end
-    filename = "#{Rails.root}/tmp/award_links.#{Time.now}.json"
-    puts "Writing: #{filename}"
-    File.open(filename, 'w'){ |f| f.write(links.to_json) }
+    byebug
   end
 
   def fname(str)

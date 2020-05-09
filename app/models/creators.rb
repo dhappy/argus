@@ -7,8 +7,8 @@ class Creators
 
   serialize :aliases, array: true
 
-  has_many :out, :books, type: :OWNR
-  has_many :out, :movies, type: :OWNR 
+  has_many :out, :books, type: :CRTR
+  has_many :out, :movies, type: :CRTR 
 
   def names; self.name.split(' & '); end
 end
