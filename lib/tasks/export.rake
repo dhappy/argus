@@ -46,18 +46,31 @@ namespace :export do
   desc 'Export awards context tree to CBOR-DAG'
   task(awards: :environment) do |t, args|
     q = Neo4j::ActiveBase.current_session.query(
-      "MATCH path = (a:Award)-->(y:Year)-->(c:Category)-[n:NOM]->(b:Book) RETURN DISTINCT path ORDER BY n.result"
+      "MATCH path = (a:Award)-->(y:Year)-->(c:Category)-[n:NOM]->(b:Book) RETURN DISTINCT path"
     )
 
     def procBook(book)
       {
-        uuid: book.uuid,
-        title: book.title, 
+        title: book.title, uuid: book.uuid,
         creators: {
           name: book.creators.name, legalname: book.creators.legalname, 
           names: book.creators.names, aliases: book.creators.aliases,
         },
         covers: [], repo: 'CID',
+      }
+    end
+
+    def procCat(category)
+      {
+        title: category.title, uuid: category.uuid,
+        nominees: category.nominees.map(procBook)
+      }
+    end
+
+    def procYear(year)
+      {
+        number: year.number, uuid: year.uuid,
+        categories: year.categories.map(procCat)
       }
     end
 
@@ -67,17 +80,7 @@ namespace :export do
 
       {
         title: award.title, shortname: award.shortname, uuid: award.uuid,
-        years: award.years.map do |year|
-          {
-            number: year.number, uuid: category.uuid,
-            year.categories.map do |category|
-              {
-                title: category.title, uuid: category.uuid,
-                nominees: category.nominees.map(procBook)
-              }
-            end
-          }
-        end
+        years: award.years.map(procYear)
       }
     end
     byebug
