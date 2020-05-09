@@ -48,6 +48,19 @@ namespace :export do
     q = Neo4j::ActiveBase.current_session.query(
       "MATCH path = (a:Award)-->(y:Year)-->(c:Category)-[n:NOM]->(b:Book) RETURN DISTINCT path ORDER BY n.result"
     )
+
+    def procBook(book)
+      {
+        uuid: book.uuid,
+        title: book.title, 
+        creators: {
+          name: book.creators.name, legalname: book.creators.legalname, 
+          names: book.creators.names, aliases: book.creators.aliases,
+        },
+        covers: [], repo: 'CID',
+      }
+    end
+
     links = q.map do |ret|
       nodes = ret.path.nodes
       award = Award.find(nodes.shift.properties[:uuid])
@@ -60,17 +73,7 @@ namespace :export do
             year.categories.map do |category|
               {
                 title: category.title, uuid: category.uuid,
-                nominees: category.nominees.map do |book|
-                  {
-                    uuid: book.uuid,
-                    title: book.title, 
-                    creators: {
-                      name: book.creators.name, legalname: book.creators.legalname, 
-                      names: book.creators.names, aliases: book.creators.aliases,
-                    },
-                    covers: [], repo: 'CID',
-                  }
-                end
+                nominees: category.nominees.map(procBook)
               }
             end
           }
