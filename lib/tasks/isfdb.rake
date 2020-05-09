@@ -2,13 +2,13 @@ desc 'Import from the Internet Speculative Fiction Database'
 namespace :isfdb do
   DB = Sequel.connect('mysql2://localhost/isfdb')
 
-  def workFor(title:, creator:, legalName: nil, isMovie: false, copyright: nil, type: nil)
-    creator = Nokogiri::HTML.parse(creator).text
-    creator, altName = creator.split('^') if creator.include?('^')
-    creators = creator.split('+').join(' & ') # when saved as an array the uniqeness constraint doesn't work
+  def workFor(title:, creators:, legalName: nil, isMovie: false, copyright: nil, type: nil)
+    creators = Nokogiri::HTML.parse(creators).text
+    creators, altName = creators.split('^') if creators.include?('^')
+    creators = creators.split('+').join(' & ') # when saved as an array the uniqeness constraint doesn't work
     creators = Creators.find_or_create_by(name: creators)
     creators.aliases = [] unless creators.aliases
-    creators.aliases = (JSON.parse(creators.aliases)).push(pseudonym).uniq
+    creators.aliases = (JSON.parse(creators.aliases)).push(altName).uniq if altName
     creators.legalName = legalName if legalName
     creators.save
     (
@@ -19,11 +19,20 @@ namespace :isfdb do
       end
     )
     .tap do |work|
+      work.creators = creators
       work.copyright ||= copyright
       work.types = [] unless work.types
       work.types = (JSON.parse(work.types)).push(type).uniq
       work.save
     end
+  end
+
+  # Guarantee this is a valid Unix path
+  def fname(str)
+    if(/\//.test(str) || /%2f/i.test(str)) # contains / or %2F, so decode anything containing %2F
+      str = str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')
+    end
+    str.mb_chars.limit(254).to_s # this causes compatability issues
   end
 
   desc 'Import award winners and nominees'
@@ -89,7 +98,7 @@ namespace :isfdb do
         next if Series.find_by(isfdbID: entry[:sid])
         next if entry[:title] == 'untitled' # an artist or editor award
         work = workFor(
-          title: entry[:title], creator: entry[:creator],  type: entry[:ttype],
+          title: entry[:title], creators: entry[:author],  type: entry[:ttype],
           isMovie: entry[:movie].present?, copyright: entry[:cpdate],
         )
         year = award.years.find_or_create_by(
@@ -99,11 +108,11 @@ namespace :isfdb do
           title: Nokogiri::HTML.parse(entry[:cat]).text
         )
 
-        if art.nominations.include?(category)
+        if work.nominations.include?(category)
           puts "  #{idx}/#{entries.count}: Skipping: #{award.title}: #{year.number}: #{work}"
         else
           puts "   #{idx}/#{entries.count}: Linking: #{award.title}: #{year.number}: #{work}"
-          Nomination.create(
+          Nominated.create(
             from_node: category, to_node: work, result: entry[:level]
           )
         end
@@ -124,12 +133,12 @@ namespace :isfdb do
       + ' title_copyright AS cpdate,' \
       + ' title_seriesnum as snum,' \
       + ' title_seriesnum_2 as snum2,' \
-      + ' creator_legalname AS legal,' \
-      + ' creator_canonical AS creator' \
+      + ' author_legalname AS legal,' \
+      + ' author_canonical AS author' \
       + ' FROM series' \
       + ' INNER JOIN titles ON titles.series_id = series.series_id' \
-      + ' INNER JOIN canonical_creator ON titles.title_id = canonical_creator.title_id' \
-      + ' INNER JOIN creators ON canonical_creator.creator_id = creators.creator_id' \
+      + ' INNER JOIN canonical_author ON titles.title_id = canonical_author.title_id' \
+      + ' INNER JOIN authors ON canonical_author.author_id = authors.author_id' \
       + ' AND series_parent IS NULL' \
       + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
       + (defined?(LIMIT) ? " LIMIT #{LIMIT}" : '') \
@@ -139,7 +148,7 @@ namespace :isfdb do
       next if Series.find_by(isfdbID: pub[:sid])
       next if pub[:title] == 'untitled' # an artist or editor award
       work = workFor(
-        title: pub[:title], creator: pub[:creator], isMovie: pub[:movie],
+        title: pub[:title], creators: pub[:author], isMovie: pub[:movie],
         copyright: pub[:cpdate], type: pub[:ttype]
       )
       series = Series.find_or_create_by(
@@ -175,11 +184,11 @@ namespace :isfdb do
       + ' title_seriesnum_2 as snum2,' \
       + ' series_parent AS parent,' \
       + ' series_parent_position AS pos,' \
-      + ' creator_canonical AS creator' \
-      + ' FROM series, titles, canonical_creator, creators' \
+      + ' author_canonical AS author' \
+      + ' FROM series, titles, canonical_author, authors' \
       + ' WHERE titles.series_id=series.series_id' \
-      + ' AND titles.title_id=canonical_creator.title_id' \
-      + ' AND canonical_creator.creator_id=creators.creator_id' \
+      + ' AND titles.title_id=canonical_author.title_id' \
+      + ' AND canonical_author.author_id=authors.author_id' \
       + " AND series.series_id IN (#{sids.join(?,)})" \
       + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
       + ' ORDER BY series_parent' \
@@ -188,7 +197,7 @@ namespace :isfdb do
     pubs.each_with_index do |pub, idx|
       next if pub[:title] == 'untitled' # an artist or editor award
       work = workFor(
-        title: pub[:title], creator: pub[:creator], isMovie: pub[:movie],
+        title: pub[:title], creators: pub[:author], isMovie: pub[:movie],
         copyright: pub[:cpdate], type: pub[:ttype]
       )
       parent = Series.find_by(isfdbID: pub[:parent])
@@ -213,26 +222,40 @@ namespace :isfdb do
     pubs = DB[
       'SELECT DISTINCT' \
       + ' pub_title AS title,' \
-      + ' creator_canonical AS creator,' \
+      + ' author_canonical AS author,' \
+      + ' author_legalname AS legal,' \
       + ' pub_isbn AS isbn,' \
       + ' pub_frontimage AS image' \
       + ' FROM pubs' \
-      + ' JOIN pub_creators ON pubs.pub_id = pub_creators.pub_id' \
-      + ' JOIN creators ON pub_creators.creator_id = creators.creator_id',
+      + ' JOIN pub_authors ON pubs.pub_id = pub_authors.pub_id' \
+      + ' JOIN authors ON pub_authors.author_id = authors.author_id' \
     ]
     pubs.each do |pub|
       next if pub[:title] == 'untitled' # an artist or editor award
-      art = workFor(
-        title: pub[:title], creator: pub[:creator], isMovie: pub[:movie],
-        copyright: pub[:cpdate], type: pub[:ttype]
+      book = workFor(
+        title: pub[:title], creators: pub[:author], legalName: pub[:legal],
+        copyright: pub[:cpdate], type: pub[:ttype],
       )
 
       if pub[:isbn].present?
         version = book.versions.find_or_create_by(isbn: pub[:isbn])
-        if pub[:image].present?
+        if (glob = Dir.glob('../book/by/#{fname(book.creators.name)}/#{fname(book.title)}/covers/pub[:isbn].*')).any?
+          byebug
+          cid = nil
+          IO.popen(['ipfs', 'add', glob.first.filename], 'r+') do |cmd|
+            out = cmd.readlines.last
+            cid = out&.split.try(:[], 1)
+            unless $?.success? && cid
+              puts "Error: IPFS Import of #{glob.first.filename})"
+              next
+            end
+          end
+          version.cover = Cover.find_or_create_by(ipfs_cid: cid) 
+        elsif pub[:image].present?
           version.cover = Cover.find_or_create_by(url: pub[:image])
         end
       end
+
     end
   end
 end
