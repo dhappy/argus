@@ -62,29 +62,35 @@ namespace :isfdb do
 
       # The awards table duplicates both the title and author columns, so
       # there's no simple way to get the canonical_author record.
-      entries = DB[
-        'SELECT' \
-        + ' award_title AS title,' \
-        + ' award_author AS author,' \
-        + ' award_cat_name AS cat,' \
-        + ' award_year AS year,' \
-        + ' award_movie AS movie,' \
-        + ' title_ttype AS ttype,' \
-        + ' title_copyright AS cpdate,' \
-        + ' award_level as level' \
-        + ' FROM awards' \
-        + ' INNER JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id' \
-        + ' INNER JOIN titles ON title_title = award_title' \
-        + " WHERE award_type_id = ?" \
-        + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
-        , type[:id]
-      ]
+      #
+      # I can't figure out how to disable casting in sequel
+      # entries = DB[
+      client = Mysql2::Client.new(host: 'localhost', database: 'isfdb')
+      entries = client.query((
+          'SELECT' \
+          + ' award_title AS title,' \
+          + ' award_author AS author,' \
+          + ' award_cat_name AS cat,' \
+          + ' award_year AS year,' \
+          + ' award_movie AS movie,' \
+          + ' title_ttype AS ttype,' \
+          + ' title_copyright AS cpdate,' \
+          + ' award_level as level' \
+          + ' FROM awards' \
+          + ' INNER JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id' \
+          + ' INNER JOIN titles ON title_title = award_title' \
+          + " WHERE award_type_id = #{type[:id]}" \
+          + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
+        ),
+        symbolize_keys: true,
+        cast: false
+      )
       entries.each_with_index do |entry, idx|
-        next if Series.find_by(isfdbID: pub[:sid])
-        next if pub[:title] == 'untitled' # an artist or editor award
+        next if Series.find_by(isfdbID: entry[:sid])
+        next if entry[:title] == 'untitled' # an artist or editor award
         work = workFor(
-          title: pub[:title], creator: pub[:creator],  type: pub[:ttype],
-          isMovie: pub[:movie].present?, copyright: pub[:cpdate],
+          title: entry[:title], creator: entry[:creator],  type: entry[:ttype],
+          isMovie: entry[:movie].present?, copyright: entry[:cpdate],
         )
         year = award.years.find_or_create_by(
           number: entry[:year].sub(/-.*/, '')
