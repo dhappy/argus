@@ -3,7 +3,4 @@ class Cover
   property :mimetype, type: String
   property :ipfsID, type: String
   property :url, type: String
-
-
-
 end

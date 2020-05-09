@@ -56,3 +56,5 @@ gem 'epub-parser', path: '../epub-parser'
 gem 'archive-zip'
 gem 'ipfs'
 gem 'mysql2'
+
+gem "sequel", "~> 5.32"
