@@ -53,24 +53,28 @@ namespace :export do
       award = Award.find(nodes.shift.properties[:uuid])
 
       {
-        title: award.title, shortname: award.shortname,
-        years: award.years.map do |year| {
-          number: year.number, uuid: category.uuid,
-          year.categories.map do |category| {
-            title: category.title, uuid: category.uuid,
-            nominees: category.nominees.map do |book|
+        title: award.title, shortname: award.shortname, uuid: award.uuid,
+        years: award.years.map do |year|
+          {
+            number: year.number, uuid: category.uuid,
+            year.categories.map do |category|
               {
-                uuid: book.uuid,
-                title: book.title, 
-                creators: {
-                  name: book.creators.name, legalname: book.creators.legalname, 
-                  names: book.creators.names, aliases: book.creators.aliases,
-                },
-                covers: [], repo: 'CID',
+                title: category.title, uuid: category.uuid,
+                nominees: category.nominees.map do |book|
+                  {
+                    uuid: book.uuid,
+                    title: book.title, 
+                    creators: {
+                      name: book.creators.name, legalname: book.creators.legalname, 
+                      names: book.creators.names, aliases: book.creators.aliases,
+                    },
+                    covers: [], repo: 'CID',
+                  }
+                end
               }
-            end,
-          } end
-        } end
+            end
+          }
+        end
       }
     end
     byebug
