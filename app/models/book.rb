@@ -2,7 +2,7 @@ class Book
   include Neo4j::ActiveNode
   property :title, type: String
   property :types, type: String
-  property :copyright, type: String
+  property :published_at, type: String
   include Neo4j::Timestamps
 
   serialize :types, array: true

@@ -22,6 +22,10 @@ The work of populating the graph and writing to IPFS is done by various rake tas
 * `screen -r` # after many hours have passed and see how much data has been integrated into the graph.
 * `rake export:awards` # after everything is loaded
 
+## Console
+
+Neo4j has a database console you can access by running `rake neo4j:start` and visiting `http://localhost:7474`.
+
 ## Rake
 
 Assumes that a dump of [the Internet Speculative Fiction Database](http://www.isfdb.org/wiki/index.php/ISFDB_Downloads) is loaded into MySql in the `isfdb` database.
@@ -52,7 +56,7 @@ Saves the covers isbn and image url into the graph. The format is:
 
 `(:Book)-[:PUB]->(:Version)-[:CVR]->(:Cover)`
 
-* This IBSN uniquifies a version.
+* This ISBN uniquifies a version.
 
 ### rake argus:images
 
@@ -83,6 +87,10 @@ Spiders and, for each repository that is found, commits with the given message a
 ### rake export:ipfs
 
 Creates a mutable filesystem with all the award winning books with content.
+
+### rake export:awards
+
+
 
 ### [/review?count=100&skip=0]
 

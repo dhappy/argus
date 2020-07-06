@@ -2,7 +2,7 @@ desc 'Import from the Internet Speculative Fiction Database'
 namespace :isfdb do
   DB = Sequel.connect('mysql2://localhost/isfdb')
 
-  def workFor(title:, creators:, legalname: nil, isMovie: false, copyright: nil, type: nil)
+  def workFor(title:, creators:, legalname: nil, is_movie: false, published_at: nil, type: nil)
     creators = Nokogiri::HTML.parse(creators).text
     creators, altName = creators.split('^') if creators.include?('^')
     creators = creators.split('+').join(' & ') # when saved as an array the uniqeness constraint doesn't work
@@ -11,16 +11,17 @@ namespace :isfdb do
     creators.aliases = (JSON.parse(creators.aliases)).push(altName).uniq if altName
     creators.legalname = legalname if legalname
     creators.save
+    title = Nokogiri::HTML.parse(title).text
     (
-      if isMovie
+      if is_movie
         creators.movies.find_or_create_by(title: title)
-      else
+      elsif title
         creators.books.find_or_create_by(title: title)
       end
     )
     .tap do |work|
       work.creators = creators
-      work.copyright ||= copyright
+      work.published_at ||= published_at
       work.types = [] unless work.types
       work.types = (JSON.parse(work.types)).push(type).uniq if type
       work.save
@@ -219,11 +220,14 @@ namespace :isfdb do
 
   desc 'Import information about cover images and isbns'
   task(covers: :environment) do |t, args|
+    require 'ipfs/client'
+
     pubs = DB[
       'SELECT DISTINCT' \
       + ' pub_title AS title,' \
       + ' author_canonical AS author,' \
       + ' author_legalname AS legal,' \
+      + ' pub_year AS year,' \
       + ' pub_isbn AS isbn,' \
       + ' pub_frontimage AS image' \
       + ' FROM pubs' \
@@ -234,15 +238,19 @@ namespace :isfdb do
       next if pub[:title] == 'untitled' # an artist or editor award
       book = workFor(
         title: pub[:title], creators: pub[:author], legalname: pub[:legal],
-        copyright: pub[:cpdate], type: pub[:ttype],
+        type: pub[:ttype]
       )
 
       if pub[:isbn].present?
         version = book.versions.find_or_create_by(isbn: pub[:isbn])
+        version.update(published_at: pub[:year])
         pat = "../book/by/#{fname(book.creators.name)}/#{fname(book.title)}/covers/#{pub[:isbn]}.*"
         puts "Globbing: #{pat}"
         if (glob = Dir.glob(pat)).any?
-          cid = nil
+          print "  Adding: #{glob.first}: "
+
+          cid = nil #IPFS::Client.default.add(glob.first).hashcode
+
           IO.popen(['ipfs', 'add', glob.first], 'r+') do |cmd|
             out = cmd.readlines.last
             cid = out&.split.try(:[], 1)
@@ -251,6 +259,8 @@ namespace :isfdb do
               next
             end
           end
+
+          puts cid
           meta = nil
           IO.popen(['exiftool', '-s', '-ImageWidth', '-ImageHeight', '-Mimetype', glob.first], 'r+') do |cmd|
             meta = cmd.readlines.reduce({}) do |size, line|

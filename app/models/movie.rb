@@ -2,7 +2,7 @@ class Movie
   include Neo4j::ActiveNode
   property :by, type: String
   property :title, type: String
-  property :copyright, type: String
+  property :published_at, type: String
   property :alias, type: String
   property :types, type: String
   include Neo4j::Timestamps

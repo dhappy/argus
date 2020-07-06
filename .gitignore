@@ -6,6 +6,7 @@
 
 db/neo4j/
 .rake_tasks~
+.vscode/
 
 # Ignore bundler config.
 /.bundle

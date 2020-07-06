@@ -77,8 +77,9 @@ namespace :export do
     }
 
     # 'shortname'/'uuid' and title could collide: unlikely
-    links = Award.all.reduce({}) do |obj, award|
-      obj[award.title] = { shortname: award.shortname }
+    links = Award.as(:a).where("a.title = 'Hugo Award' OR a.title = 'Nebula Award'").reduce({}) do |obj, award|
+      # complicates deserialization
+      obj[award.title] = {} # shortname: award.shortname }
       award.years.reduce(obj[award.title]){ |obj, y| obj[y.number] = procYear.call(y); obj }
       obj
     end
