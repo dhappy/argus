@@ -77,8 +77,9 @@ namespace :export do
     }
 
     # 'shortname'/'uuid' and title could collide: unlikely
-    links = Award.as(:a).where("a.title = 'Hugo Award' OR a.title = 'Nebula Award'").reduce({}) do |obj, award|
-      # complicates deserialization
+    # links = Award.as(:a).where("a.title = 'Hugo Award' OR a.title = 'Nebula Award'").reduce({}) do |obj, award|
+    links = Award.all.reduce({}) do |obj, award|
+                            # complicates deserialization
       obj[award.title] = {} # shortname: award.shortname }
       award.years.reduce(obj[award.title]){ |obj, y| obj[y.number] = procYear.call(y); obj }
       obj
@@ -158,7 +159,7 @@ namespace :export do
 
   def fname(str)
     str = str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')
-    str.mb_chars.limit(254).to_s # this causes compatability issues
+    #str.mb_chars.limit(254).to_s # this causes compatability issues
   end
 
   desc 'Export cover images to [dir] in book/by/#{author}/#{title}/covers/#{isbn}.#{ext}'
@@ -187,9 +188,9 @@ namespace :export do
             end
             fullname = "#{dirname}/#{filename}"
             if File.exists?(fullname)
-              puts "  Skipping: #{fullname} (#{cover.ipfs_id})"
+              puts "  Skipping: #{fullname} (#{cover.cid})"
             else
-              puts "  Adding: #{fullname} (#{cover.ipfs_id})"
+              puts "  Adding: #{fullname} (#{cover.cid})"
               FileUtils.mkdir_p(dirname)
               File.open(fullname, 'wb') do |file|
                 file.write(IPFS::Client.default.cat(cover.ipfs_id))
@@ -223,7 +224,7 @@ namespace :export do
 
       covers = book.versions(rel_length: :any).cover.to_a
       if covers.any?
-        parent = "#{dir}/book/by/#{fname(book.author)}/#{fname(book.title)}"
+        parent = "#{dir}/book/by/#{fname(book.creators.name)}/#{fname(book.title)}"
         dirname = "#{parent}/covers"
 
         covers.each.with_index(1) do |cover, idx|
@@ -234,9 +235,11 @@ namespace :export do
               raise RuntimeError, "Error Parsing Mimetype: #{mimetype} (#{cover.ipfs_id})"
             end
             fullname = "#{dirname}/#{filename}"
-            puts "  Adding: #{fullname} (#{cover.ipfs_id})"
-            IPFS::Client.default.files.mkdir(dirname, { parents: true })
-            IPFS::Client.default.files.cp(`/ipfs/${cover.ipfs_id}`, fullname)
+            puts "  Adding: #{fullname} (#{cover.cid})"
+            # IPFS::Client.default.files.mkdir(dirname, { parents: true })
+            # IPFS::Client.default.files.cp(`/ipfs/${cover.cid}`, fullname)
+            system('ipfs', 'files', 'mkdir', '-p', "#{dirname}")
+            system('ipfs', 'files', 'cp', "/ipfs/#{cover.cid}", "#{fullname}")
           end
         end
       end

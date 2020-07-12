@@ -5,4 +5,6 @@ class Cover
   property :url, type: String
   property :width, type: Integer
   property :height, type: Integer
+
+  has_many :in, :versions, type: :CVR
 end
