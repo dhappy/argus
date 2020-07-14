@@ -76,21 +76,32 @@ namespace :export do
       year.categories.reduce({}){ |obj, c| obj[c.title] = procCat.call(c); obj }
     }
 
-    # 'shortname'/'uuid' and title could collide: unlikely
-    # links = Award.as(:a).where("a.title = 'Hugo Award' OR a.title = 'Nebula Award'").reduce({}) do |obj, award|
-    links = Award.all.reduce({}) do |obj, award|
-                            # complicates deserialization
-      obj[award.title] = {} # shortname: award.shortname }
-      award.years.reduce(obj[award.title]){ |obj, y| obj[y.number] = procYear.call(y); obj }
+    # Too big. DAG objects must be < 1MiB
+    awards = Award.all.reduce({}) do |obj, award|
+      years = nil
+      IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
+        cmd.puts JSON.generate(
+          award.years.reduce({}){ |obj, y| obj[y.number] = procYear.call(y); obj }
+        )
+        cmd.close_write
+        years = cmd.readlines.last
+        puts "#{award.title}: #{years}"
+        unless $?.success? && years
+          puts "Error: IPFS DAG PUT"
+          next
+        end
+      end
+
+      obj[award.title] = { ?/ => years }
       obj
     end
 
     cid = nil
     IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
-      cmd.puts JSON.generate(links)
+      cmd.puts JSON.generate(awards)
       cmd.close_write
       cid = cmd.readlines.last
-      puts "cid:#{cid}"
+      puts "final cid: #{cid}"
       unless $?.success? && cid
         puts "Error: IPFS DAG PUT"
         next
