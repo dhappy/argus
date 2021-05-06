@@ -1,5 +1,5 @@
 class Contains
-  include ActiveGraph::Node
+  include ActiveGraph::Relationship
   from_class :Series
   to_class   [:Book, :Movie, :Series]
   type :HAS

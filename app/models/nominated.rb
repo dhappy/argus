@@ -1,5 +1,5 @@
 class Nominated
-  include ActiveGraph::ActiveRel
+  include ActiveGraph::Relationship
   before_save :translate_result
 
   from_class :Category

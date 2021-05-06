@@ -2,7 +2,10 @@ desc 'Import from the Internet Speculative Fiction Database'
 namespace :isfdb do
   DB = Sequel.connect('mysql2://localhost/isfdb')
 
-  def workFor(title:, creators:, legalname: nil, is_movie: false, published_at: nil, type: nil)
+  def workFor(
+    title:, creators:, legalname: nil, is_movie: false,
+    published_at: nil, type: nil, copyright: nil
+  )
     creators = Nokogiri::HTML.parse(creators).text
     creators, altName = creators.split('^') if creators.include?('^')
     creators = creators.split('+').join(' & ') # when saved as an array the uniqeness constraint doesn't work
@@ -100,7 +103,7 @@ namespace :isfdb do
         next if entry[:title] == 'untitled' # an artist or editor award
         work = workFor(
           title: entry[:title], creators: entry[:author],  type: entry[:ttype],
-          isMovie: entry[:movie].present?, copyright: entry[:cpdate],
+          is_movie: entry[:movie].present?, copyright: entry[:cpdate],
         )
         year = award.years.find_or_create_by(
           number: entry[:year].sub(/-.*/, '')
