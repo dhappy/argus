@@ -1,10 +1,10 @@
 class Creators
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :name, type: String
   property :legalname, type: String
   property :aliases, type: String
   property :did, type: String
-  include Neo4j::Timestamps
+  include ActiveGraph::Timestamps
 
   serialize :aliases, array: true
 

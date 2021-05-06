@@ -1,5 +1,5 @@
 class Award 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :title, type: String
   property :shortname, type: String
 

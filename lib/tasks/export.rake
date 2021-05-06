@@ -78,21 +78,27 @@ namespace :export do
 
     # Too big. DAG objects must be < 1MiB
     awards = Award.all.reduce({}) do |obj, award|
-      years = nil
-      IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
-        cmd.puts JSON.generate(
-          award.years.reduce({}){ |obj, y| obj[y.number] = procYear.call(y); obj }
-        )
-        cmd.close_write
-        years = cmd.readlines.last
-        puts "#{award.title}: #{years}"
-        unless $?.success? && years
-          puts "Error: IPFS DAG PUT"
-          next
+      years = award.years.reduce({}){ |obj, y| obj[y.number] = procYear.call(y); obj }
+      links = {}
+      years.each do |year, cats|
+        IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
+          cmd.puts JSON.generate(cats)
+          cmd.close_write
+          catsCID = cmd.readlines.last
+          puts "#{year}: #{catsCID}"
+          links[year] = { ?/ => catsCID }
         end
       end
 
-      obj[award.title] = { ?/ => years }
+      yearsCID = nil
+      IO.popen(['ipfs', 'dag', 'put', '--pin'], 'r+') do |cmd|
+        cmd.puts JSON.generate(links)
+        cmd.close_write
+        yearsCID = cmd.readlines.last
+        puts "#{award.title}: #{yearsCID}"
+      end
+
+      obj[award.title] = { ?/ => yearsCID }
       obj
     end
 

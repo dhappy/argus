@@ -1,11 +1,11 @@
 class Movie 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :by, type: String
   property :title, type: String
   property :published_at, type: String
   property :alias, type: String
   property :types, type: String
-  include Neo4j::Timestamps
+  include ActiveGraph::Timestamps
 
   serialize :types, array: true
 

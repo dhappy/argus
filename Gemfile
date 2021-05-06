@@ -1,7 +1,7 @@
 source 'https://rubygems.org'
 git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
-ruby '2.5.5'
+ruby '2.7.1'
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
 gem 'rails', '~> 6.0.2', '>= 6.0.2.1'
@@ -50,9 +50,12 @@ end
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
 
-gem 'neo4j', git: 'https://github.com/neo4jrb/neo4j.git'
+#gem 'neo4j', git: 'https://github.com/neo4jrb/neo4j.git'
+gem 'activegraph'
+gem 'neo4j-ruby-driver'
+
 gem 'react-rails'
-gem 'epub-parser', path: '../epub-parser'
+#gem 'epub-parser', path: '../epub-parser'
 gem 'archive-zip'
 gem 'ipfs'
 gem 'mysql2'

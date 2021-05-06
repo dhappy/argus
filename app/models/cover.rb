@@ -1,5 +1,5 @@
 class Cover 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :mimetype, type: String
   property :cid, type: String
   property :url, type: String

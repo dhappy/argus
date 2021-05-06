@@ -1,5 +1,5 @@
 class Year 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :number, type: Integer
 
   has_many :out, :categories, type: :CAT, unique: true

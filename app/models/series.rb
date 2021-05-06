@@ -1,5 +1,5 @@
 class Series 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :title, type: String
   property :parents, type: String
   property :rank, type: Float

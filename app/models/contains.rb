@@ -1,5 +1,5 @@
 class Contains
-  include Neo4j::ActiveRel
+  include ActiveGraph::Node
   from_class :Series
   to_class   [:Book, :Movie, :Series]
   type :HAS

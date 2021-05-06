@@ -1,7 +1,4 @@
 class Repository 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :cid, type: String
-
-
-
 end

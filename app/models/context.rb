@@ -1,8 +1,8 @@
 class Context 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :name, type: String
   property :type, type: String
-  include Neo4j::Timestamps
+  include ActiveGraph::Timestamps
   
   has_many :in, :contexts, type: :SUB
   has_many :out, :subcontexts, type: :SUB, model_class: :Context, unique: true

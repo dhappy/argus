@@ -1,9 +1,9 @@
-class Content 
-  include Neo4j::ActiveNode
+class Content
+  include ActiveGraph::Node
   property :mimetype, type: String
   property :ipfs_id, type: String
   property :url, type: String
-  include Neo4j::Timestamps
+  include ActiveGraph::Timestamps
 
   has_many :in, :versions, type: :CVR
 end

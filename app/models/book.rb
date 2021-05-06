@@ -1,9 +1,9 @@
 class Book 
-  include Neo4j::ActiveNode
+  include ActiveGraph::Node
   property :title, type: String
   property :types, type: String
   property :published_at, type: String
-  include Neo4j::Timestamps
+  include ActiveGraph::Timestamps
 
   serialize :types, array: true
 

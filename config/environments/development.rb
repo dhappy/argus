@@ -1,6 +1,11 @@
 Rails.application.configure do
-  config.neo4j.session_type = :http
-  config.neo4j.session_path = 'http://localhost:7474'
+  # config.neo4j.session_type = :http
+  # config.neo4j.session_path = 'http://localhost:7474'
+  config.neo4j.driver.url = ENV['NEO4J_URL'] || 'neo4j://localhost:7687'
+  config.neo4j.driver.auth_token = Neo4j::Driver::AuthTokens.basic('neo4j', 'neo4j2')
+  config.neo4j.driver.encryption = false
+  # config.neo4j.driver.username = 'neo4j'
+  # config.neo4j.driver.password = 'neo4j2'
 
   # Settings specified here will take precedence over those in config/application.rb.
 

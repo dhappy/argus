@@ -1,5 +1,5 @@
 class Nominated
-  include Neo4j::ActiveRel
+  include ActiveGraph::ActiveRel
   before_save :translate_result
 
   from_class :Category
