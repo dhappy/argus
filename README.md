@@ -17,7 +17,7 @@ The work of populating the graph and writing to IPFS is done by various rake tas
 * `⌘^a c`
 * `rlog isfdb:series`
 * `⌘^a c`
-* `rlog isfdb:awards`
+* `rlog isfdb:covers`
 * `⌘^a d`
 * `screen -r` # after many hours have passed and see how much data has been integrated into the graph.
 * `rake export:awards` # after everything is loaded
@@ -90,7 +90,7 @@ Creates a mutable filesystem with all the award winning books with content.
 
 ### rake export:awards
 
-
+### bundle exec rails server
 
 ### [/review?count=100&skip=0]
 

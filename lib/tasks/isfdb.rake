@@ -152,7 +152,7 @@ namespace :isfdb do
       next if Series.find_by(isfdbID: pub[:sid])
       next if pub[:title] == 'untitled' # an artist or editor award
       work = workFor(
-        title: pub[:title], creators: pub[:author], isMovie: pub[:movie],
+        title: pub[:title], creators: pub[:author], is_movie: pub[:movie],
         copyright: pub[:cpdate], type: pub[:ttype]
       )
       series = Series.find_or_create_by(
@@ -162,7 +162,7 @@ namespace :isfdb do
       if work.series.include?(series)
         puts "  #{idx}/#{pubs.count}:Skipping:#{rank}: #{series.title}: #{work.copyright}: #{work}"
       else
-        puts "   #{idx}/#{pubs.count}:Linking:#{rank}: #{series.title}: #{work.copyright}: #{work}"
+        puts "   #{idx}/#{pubs.count}:Linking:#{rank}: #{series.title}: #{work}"
         Contains.create(from_node: series, to_node: work, rank: rank)
       end
     end
@@ -247,44 +247,8 @@ namespace :isfdb do
       if pub[:isbn].present?
         version = book.versions.find_or_create_by(isbn: pub[:isbn])
         version.update(published_at: pub[:year])
-        pat = "../book/by/#{fname(book.creators.name)}/#{fname(book.title)}/covers/#{pub[:isbn]}.*"
-        puts "Globbing: #{pat}"
-        if (glob = Dir.glob(pat)).any?
-          print "  Adding: #{glob.first}: "
 
-          cid = nil #IPFS::Client.default.add(glob.first).hashcode
-
-          IO.popen(['ipfs', 'add', glob.first], 'r+') do |cmd|
-            out = cmd.readlines.last
-            cid = out&.split.try(:[], 1)
-            unless $?.success? && cid
-              puts "Error: IPFS Import of #{glob.first})"
-              next
-            end
-          end
-
-          puts cid
-          meta = nil
-          IO.popen(['exiftool', '-s', '-ImageWidth', '-ImageHeight', '-Mimetype', glob.first], 'r+') do |cmd|
-            meta = cmd.readlines.reduce({}) do |size, line|
-              if match = /^(?<prop>[^:]+\S)\s+:\s+(?<val>\S.+)\r?\n?$/.match(line)
-                prop = match[:prop].sub(/^Image/, '').downcase
-                size[prop.to_sym] = match[:val]
-              end
-              size
-            end
-            unless $?.success?
-              puts "Error: EXIF Metadata of #{glob.first})"
-              next
-            end
-          end
-          mimetype = meta[:mimetype] || "image/#{glob.first.split('.').slice(-1)[0]}" # often wrong, but rarely ambiguous
-          puts "  Got Size: #{meta[:width]}✕#{meta[:height]} (#{cid})"
-          
-          version.cover = Cover.find_or_create_by(
-            cid: cid, width: meta[:width], height: meta[:height], mimetype: mimetype
-          ) 
-        elsif pub[:image].present?
+        if pub[:image].present?
           version.cover = Cover.find_or_create_by(url: pub[:image])
         end
       end

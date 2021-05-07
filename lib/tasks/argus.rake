@@ -1,4 +1,13 @@
+desc 'The all-seeing Argus'
 namespace :argus do
+  # Guarantee this is a valid Unix path
+  def fname(str)
+    if(str =~ /\// || str =~ /%2f/i) # contains / or %2F, so decode anything containing %2F
+      str = str.gsub('%', '%25').gsub('/', '%2F').gsub("\x00", '%00')
+    end
+    str.mb_chars.limit(254).to_s # this causes compatability issues
+  end
+
   desc 'Insert images into IPFS'
   task(images: :environment) do |t, args|
     require 'net/http'
@@ -7,29 +16,66 @@ namespace :argus do
     q = Cover.as(:c).where(
       'c.cid IS NULL AND c.url IS NOT NULL'
     )
+
     q.each do |c|
       print "Processing #{c.url}"
       next unless c.url.present?
-      res = Net::HTTP.get(URI.parse(c.url.split('|').first))
-      Tempfile.open(
-        'cover', "#{Rails.root}/tmp", encoding: 'ascii-8bit'
-      ) do |file|
-        file.write(res)
-        #cover = IPFS::Client.default.add(file.path)
-        IO.popen(['ipfs', 'add', file.path], 'r+') do |cmd|
+      filename = nil
+
+      c.versions.each do |v|
+        dir = "../book/by/#{fname(version.book.creators.name)}/#{fname(version.book.title)}/covers/"
+        base = "#{dir}/#{pub[:isbn]}"
+        pat = "#{base}.*"
+        puts "Globbing: #{pat}"
+        if (glob = Dir.glob(pat)).any?
+          print "  Adding: #{glob.first}: "
+          filename = glob.first
+        else
+          url = c.url.split('|').first
+          res = Net::HTTP.get(URI.parse(url))
+          ext = url.split('.').pop
+          ext = :jpeg if ext == 'jpg'
+          filename = "#{base}.#{ext}"
+
+          File.makedirs(dir)
+          File.open(filename, encoding: 'ascii-8bit') do |file|
+            file.write(res)
+          end
+        end
+
+        IO.popen(['ipfs', 'add', filename], 'r+') do |cmd|
           out = cmd.readlines.last
           cid = out&.split.try(:[], 1)
           unless $?.success? && cid
-            puts "Error: IPFS Import of #{glob.first})"
+            puts "Error: IPFS Import of #{filename})"
             next
-          else
-            ext = c.url.split('.').pop
-            ext = :jpeg if ext == 'jpg'
-            c.update({
-              mimetype: "image/#{ext}", cid: cid,
-            })
           end
         end
+  
+        puts cid
+
+        meta = nil
+        IO.popen(['exiftool', '-s', '-ImageWidth', '-ImageHeight', '-Mimetype', glob.first], 'r+') do |cmd|
+          meta = cmd.readlines.reduce({}) do |size, line|
+            if match = /^(?<prop>[^:]+\S)\s+:\s+(?<val>\S.+)\r?\n?$/.match(line)
+              prop = match[:prop].sub(/^Image/, '').downcase
+              size[prop.to_sym] = match[:val]
+            end
+            size
+          end
+          unless $?.success?
+            puts "Error: EXIF Metadata of #{filename})"
+            next
+          end
+        end
+        type = filename.split('.').last # often wrong, but rarely ambiguous
+        mimetype = meta[:mimetype] || "image/#{type}"
+        puts "  Got Size: #{meta[:width]}✕#{meta[:height]} (#{cid})"
+
+        c.update({
+          width: meta[:width], height: meta[:height],
+          mimetype: mimetype, cid: cid,
+        })
       end
       puts " to #{c.cid} (#{c.mimetype})"
     end
