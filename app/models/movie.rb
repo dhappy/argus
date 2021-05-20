@@ -5,6 +5,7 @@ class Movie
   property :published_at, type: String
   property :alias, type: String
   property :types, type: String
+  property :isfdbID, type: Integer
   include ActiveGraph::Timestamps
 
   serialize :types, array: true

@@ -4,7 +4,7 @@ namespace :isfdb do
 
   def workFor(
     title:, creators:, legalname: nil, is_movie: false,
-    published_at: nil, type: nil, copyright: nil
+    published_at: nil, type: nil, copyright: nil, isfdbID: nil
   )
     creators = Nokogiri::HTML.parse(creators).text
     creators, altName = creators.split('^') if creators.include?('^')
@@ -27,6 +27,7 @@ namespace :isfdb do
       work.published_at ||= published_at
       work.types = [] unless work.types
       work.types = (JSON.parse(work.types)).push(type).uniq if type
+      work.isfdbID = isfdbID if isfdbID
       work.save
     end
   end
@@ -41,6 +42,9 @@ namespace :isfdb do
 
   desc 'Import award winners and nominees'
   task(awards: :environment) do |t, args|
+    TTYPES = \
+      "'ANTHOLOGY','COLLECTION','NOVEL','NONFICTION'," \
+      + "'OMNIBUS','POEM','SHORTFICTION','CHAPBOOK'"
     LEVELS = {
       '71': 'No Winner -- Insufficient Votes',
       '72': 'Not on ballot -- Insufficient Nominations',
@@ -68,6 +72,7 @@ namespace :isfdb do
     ]
     types.each do |type|
       award = Award.merge(
+        isfdbID: type[:id],
         title: Nokogiri::HTML.parse(type[:name]).text,
         shortname: Nokogiri::HTML.parse(type[:shortname]).text,
       )
@@ -86,24 +91,32 @@ namespace :isfdb do
           + ' award_cat_name AS cat,' \
           + ' award_year AS year,' \
           + ' award_movie AS movie,' \
+          + ' title_id AS id,' \
+          + ' title_parent AS parent,' \
           + ' title_ttype AS ttype,' \
           + ' title_copyright AS cpdate,' \
-          + ' award_level as level' \
+          + ' award_level AS level' \
           + ' FROM awards' \
           + ' INNER JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id' \
           + ' INNER JOIN titles ON title_title = award_title' \
           + " WHERE award_type_id = #{type[:id]}" \
-          + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
+          + " AND title_ttype IN (#{TTYPES})" \
         ),
         symbolize_keys: true,
         cast: false
       )
       entries.each_with_index do |entry, idx|
-        next if Series.find_by(isfdbID: entry[:sid])
-        next if entry[:title] == 'untitled' # an artist or editor award
+        if entry[:title] == 'untitled' # an artist or editor award
+          puts "Skipping 'untitled' by #{entry[:author]}"
+          next
+        end
+        entry[:id] = entry[:id].to_i
+        entry[:parent] = entry[:parent].to_i
         work = workFor(
-          title: entry[:title], creators: entry[:author],  type: entry[:ttype],
-          is_movie: entry[:movie].present?, copyright: entry[:cpdate],
+          title: entry[:title], creators: entry[:author],
+          type: entry[:ttype], is_movie: entry[:movie].present?,
+          copyright: entry[:cpdate],
+          isfdbID: (entry[:parent] != 0 ? entry[:parent] : entry[:id]),
         )
         year = award.years.find_or_create_by(
           number: entry[:year].sub(/-.*/, '')
@@ -137,19 +150,20 @@ namespace :isfdb do
       + ' title_copyright AS cpdate,' \
       + ' title_seriesnum as snum,' \
       + ' title_seriesnum_2 as snum2,' \
-      + ' author_legalname AS legal,' \
-      + ' author_canonical AS author' \
+      + " GROUP_CONCAT(author_legalname SEPARATOR ' & ') AS legal," \
+      + " GROUP_CONCAT(author_canonical SEPARATOR ' & ') AS author" \
       + ' FROM series' \
       + ' INNER JOIN titles ON titles.series_id = series.series_id' \
       + ' INNER JOIN canonical_author ON titles.title_id = canonical_author.title_id' \
       + ' INNER JOIN authors ON canonical_author.author_id = authors.author_id' \
       + ' AND series_parent IS NULL' \
       + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
+      + ' GROUP BY series.series_id, series_title, title_title,' \
+      + ' title_ttype, title_copyright, title_seriesnum, title_seriesnum_2' \
       + (defined?(LIMIT) ? " LIMIT #{LIMIT}" : '') \
     ]
     puts "Serializing Tree #{pubs.count} #{'Root'.pluralize(pubs.count)}"
     pubs.each_with_index do |pub, idx|
-      next if Series.find_by(isfdbID: pub[:sid])
       next if pub[:title] == 'untitled' # an artist or editor award
       work = workFor(
         title: pub[:title], creators: pub[:author], is_movie: pub[:movie],
@@ -160,7 +174,7 @@ namespace :isfdb do
       )
       rank = "#{pub[:snum]}#{pub[:snum2] ? ".#{pub[:snum2]}" : ''}"
       if work.series.include?(series)
-        puts "  #{idx}/#{pubs.count}:Skipping:#{rank}: #{series.title}: #{work.copyright}: #{work}"
+        puts "  #{idx}/#{pubs.count}:Skipping:#{rank}: #{series.title}: #{work}"
       else
         puts "   #{idx}/#{pubs.count}:Linking:#{rank}: #{series.title}: #{work}"
         Contains.create(from_node: series, to_node: work, rank: rank)
@@ -201,18 +215,21 @@ namespace :isfdb do
     pubs.each_with_index do |pub, idx|
       next if pub[:title] == 'untitled' # an artist or editor award
       work = workFor(
-        title: pub[:title], creators: pub[:author], isMovie: pub[:movie],
+        title: pub[:title], creators: pub[:author], is_movie: pub[:movie],
         copyright: pub[:cpdate], type: pub[:ttype]
       )
       parent = Series.find_by(isfdbID: pub[:parent])
-      raise RuntimeError, "Missing Parent: #{pub[:parent]}" unless parent
+      unless parent
+        puts "Error: Missing Parent: #{pub[:parent]} (#{pub[:title]})"
+        next
+      end
       series = Series.find_or_create_by(
         title: Nokogiri::HTML.parse(pub[:series]).text, isfdbID: pub[:sid]
       )
       if work.series.include?(series)
-        puts "  #{idx}/#{pubs.count}:Skipping: #{parent.title} — #{series.title}: #{work.copyright}: #{work}"
+        puts "  #{idx}/#{pubs.count}:Skipping: #{parent.title} — #{series.title}: #{work}"
       else
-        puts "   #{idx}/#{pubs.count}:Linking: #{parent.title} — #{series.title}: #{work.copyright}: #{work}"
+        puts "   #{idx}/#{pubs.count}:Linking: #{parent.title} — #{series.title}: #{work}"
         unless parent.series.include?(series)
           Contains.create(from_node: parent, to_node: series, rank: pub[:pos])
         end
@@ -243,6 +260,7 @@ namespace :isfdb do
         title: pub[:title], creators: pub[:author], legalname: pub[:legal],
         type: pub[:ttype]
       )
+      puts "Cover for #{book.title}"
 
       if pub[:isbn].present?
         version = book.versions.find_or_create_by(isbn: pub[:isbn])

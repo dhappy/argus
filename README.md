@@ -8,8 +8,11 @@ The work of populating the graph and writing to IPFS is done by various rake tas
 
 ## Quickstart (*nix)
 
+* `docker run --name argus -p7474:7474 -p7687:7687 -v $HOME/neo4j/data:/data -v $HOME/neo4j/logs:/logs --env NEO4J_AUTH=neo4j/neo4j2 neo4j:latest`
+* *`docker run` is used the first time only, subsequently use `docker start argus`*
 * `git clone https://github.com/dhappy/argus`
 * `cd argus`
+* `rake neo4j:migrate`
 * `alias isotime='date +%Y-%m-%d@%H:%M:%S%:z'`
 * `function rlog() { rake $1 | tee log/$1.$(isotime).log; }`
 * `screen`
@@ -24,7 +27,7 @@ The work of populating the graph and writing to IPFS is done by various rake tas
 
 ## Console
 
-Neo4j has a database console you can access by running `rake neo4j:start` and visiting `http://localhost:7474`.
+Neo4j has an interactive console you can access by visiting `http://localhost:7474`.
 
 ## Rake
 
@@ -38,8 +41,8 @@ Saves the award year, category and books into the graph. The format of the graph
 
 * There is a `result` property on [the `Nominated` relation](app/models/nominated.rb) that is either:
   * The number that they placed in the competition.
-  * Text strings like `Not on Ballot: Insufficient Nominations` describing a special situation.
-  * `NULL` is the order is unspecified.
+  * A text string like `Not on Ballot: Insufficient Nominations` describing a special situation.
+  * `NULL` if the order is unspecified.
 
 ### rake isfdb:series
 
@@ -62,6 +65,7 @@ Saves the covers isbn and image url into the graph. The format is:
 
 Finds Content nodes with a url, but no IPFS id, then downloads the url and inserts it into IPFS. This works in conjunction with `isfdb:covers` to collect the cover images referenced in the database,
 
+<!--
 ### rake epubs:create
 
 Spiders a directory tree and where there is an index.html, but no index.epub, it creates the necessary files for a basic epub and zips the directory to index.epub.
@@ -89,6 +93,7 @@ Spiders and, for each repository that is found, commits with the given message a
 Creates a mutable filesystem with all the award winning books with content.
 
 ### rake export:awards
+-->
 
 ### bundle exec rails server
 

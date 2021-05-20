@@ -18,30 +18,35 @@ namespace :argus do
     )
 
     q.each do |c|
-      print "Processing #{c.url}"
+      puts "Processing #{c.url}"
       next unless c.url.present?
       filename = nil
 
-      c.versions.each do |v|
-        dir = "../book/by/#{fname(version.book.creators.name)}/#{fname(version.book.title)}/covers/"
-        base = "#{dir}/#{pub[:isbn]}"
+      # w/o the limit it overflows the stack
+      c.versions.limit(100).each do |v|
+        dir = "../book/by/#{fname(v.book.creators.name)}/#{fname(v.book.title)}/covers"
+        base = "#{dir}/#{v.isbn}"
         pat = "#{base}.*"
-        puts "Globbing: #{pat}"
+        puts " Globbing: #{pat}"
         if (glob = Dir.glob(pat)).any?
-          print "  Adding: #{glob.first}: "
+          puts "  Adding: #{glob.first}: "
           filename = glob.first
         else
           url = c.url.split('|').first
           res = Net::HTTP.get(URI.parse(url))
-          ext = url.split('.').pop
+          ext = url.split('/').last.split('.').pop
+          ext ||= 'image'
           ext = :jpeg if ext == 'jpg'
           filename = "#{base}.#{ext}"
 
-          File.makedirs(dir)
-          File.open(filename, encoding: 'ascii-8bit') do |file|
+          FileUtils.makedirs(dir)
+          File.open(filename, mode: 'w', encoding: 'ascii-8bit') do |file|
             file.write(res)
           end
+          puts "  Wrote: #{filename}: "
         end
+
+        cid = nil
 
         IO.popen(['ipfs', 'add', filename], 'r+') do |cmd|
           out = cmd.readlines.last
@@ -55,7 +60,13 @@ namespace :argus do
         puts cid
 
         meta = nil
-        IO.popen(['exiftool', '-s', '-ImageWidth', '-ImageHeight', '-Mimetype', glob.first], 'r+') do |cmd|
+        IO.popen(
+          [
+            'exiftool', '-s', '-ImageWidth', '-ImageHeight',
+            '-Mimetype', filename
+          ],
+          'r+'
+        ) do |cmd|
           meta = cmd.readlines.reduce({}) do |size, line|
             if match = /^(?<prop>[^:]+\S)\s+:\s+(?<val>\S.+)\r?\n?$/.match(line)
               prop = match[:prop].sub(/^Image/, '').downcase

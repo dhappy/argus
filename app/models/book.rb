@@ -3,6 +3,7 @@ class Book
   property :title, type: String
   property :types, type: String
   property :published_at, type: String
+  property :isfdbID, type: Integer
   include ActiveGraph::Timestamps
 
   serialize :types, array: true

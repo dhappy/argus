@@ -3,7 +3,7 @@ class Series
   property :title, type: String
   property :parents, type: String
   property :rank, type: Float
-  property :isfdbID, type: String
+  property :isfdbID, type: Integer
 
   serialize :parents, array: true
 
