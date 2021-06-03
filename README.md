@@ -37,7 +37,7 @@ Assumes that a dump of [the Internet Speculative Fiction Database](http://www.is
 
 Saves the award year, category and books into the graph. The format of the graph is:
 
-`(:Award)-[:YR]->(:Year)-[:CAT]->(:Category)-[:NOM]->(:Book|:Movie)`
+`(:Award)-[:IN]->(:Year)-[:FOR]->(:Category)-[:NOMINEE]->(:Book|:Movie)`
 
 * There is a `result` property on [the `Nominated` relation](app/models/nominated.rb) that is either:
   * The number that they placed in the competition.
@@ -48,16 +48,16 @@ Saves the award year, category and books into the graph. The format of the graph
 
 Saves the series nesting, contents and order into the graph. The format is:
 
-`(:Series)-[:SUB*]->(:Series)-[:HAS]->(:Book|:Movie)<-[CRTR]-(:Creators)`
+`(:Series)-[:CONTAINS*]->(:Series)-[:CONTAINS]->(:Book|:Movie)<-[CREATED]-(:Creators)`
 
-* `Creators` represents all the creators for a work.
-* There is a `rank` associated `Contains` relations: `MATCH (s:Series)-[h:HAS]->(b:Book) ORDER BY h.rank RETURN s`
+* `Creators` represents all the creators for a work. Names are joined by a & sign because the uniqueness constraint doesn't work with arrays.
+* There is a `rank` associated `Contains` relations: `MATCH (s:Series)-[c:CONTAINS]->(b:Book) ORDER BY c.rank RETURN s`
 
 ### rake isfdb:covers
 
 Saves the covers isbn and image url into the graph. The format is:
 
-`(:Book)-[:PUB]->(:Version)-[:CVR]->(:Cover)`
+`(:Book)-[:PUBLICATION]->(:Version)-[:COVER]->(:Cover)`
 
 * This ISBN uniquifies a version.
 
@@ -99,7 +99,7 @@ Creates a mutable filesystem with all the award winning books with content.
 
 ### [/review?count=100&skip=0]
 
-For books without a `-[:RPO]->` link, check the directory `../.../trainpacks/` for files matching the pattern `*#{author}*#{title}*` or `*#{title}*#{author}*`.
+For books without a `-[:REPO]->` link, check the directory `../.../trainpacks/` for files matching the pattern `*#{author}*#{title}*` or `*#{title}*#{author}*`.
 
 The page has an `⏩ Injest ⏭` button for each found file that will copy the given file to `../.../book/by/#{author}/#{title}/`.
 

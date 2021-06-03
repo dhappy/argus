@@ -1,10 +1,10 @@
-class Nominated
+class Nominee
   include ActiveGraph::Relationship
   before_save :translate_result
 
   from_class :Category
   to_class   [:Book, :Movie]
-  type :NOM
+  type :NOMINEE
 
   property :result, type: String
 

@@ -91,7 +91,7 @@ namespace :isfdb do
           + ' award_cat_name AS cat,' \
           + ' award_year AS year,' \
           + ' award_movie AS movie,' \
-          + ' title_id AS id,' \
+          + ' title_id AS tid,' \
           + ' title_parent AS parent,' \
           + ' title_ttype AS ttype,' \
           + ' title_copyright AS cpdate,' \
@@ -110,13 +110,13 @@ namespace :isfdb do
           puts "Skipping 'untitled' by #{entry[:author]}"
           next
         end
-        entry[:id] = entry[:id].to_i
+        entry[:tid] = entry[:tid].to_i
         entry[:parent] = entry[:parent].to_i
         work = workFor(
           title: entry[:title], creators: entry[:author],
           type: entry[:ttype], is_movie: entry[:movie].present?,
           copyright: entry[:cpdate],
-          isfdbID: (entry[:parent] != 0 ? entry[:parent] : entry[:id]),
+          isfdbID: (entry[:parent] != 0 ? entry[:parent] : entry[:tid]),
         )
         year = award.years.find_or_create_by(
           number: entry[:year].sub(/-.*/, '')
@@ -144,6 +144,8 @@ namespace :isfdb do
     pubs = DB[
       'SELECT DISTINCT' \
       + ' series.series_id AS sid,' \
+      + ' titles.title_id AS tid,' \
+      + ' title_parent AS parent,' \
       + ' series_title AS series,' \
       + ' title_title AS title,' \
       + ' title_ttype AS ttype,' \
@@ -159,15 +161,19 @@ namespace :isfdb do
       + ' AND series_parent IS NULL' \
       + " AND title_ttype IN ('ANTHOLOGY','COLLECTION','NOVEL','NONFICTION','OMNIBUS','POEM','SHORTFICTION','CHAPBOOK')" \
       + ' GROUP BY series.series_id, series_title, title_title,' \
-      + ' title_ttype, title_copyright, title_seriesnum, title_seriesnum_2' \
+      + ' title_ttype, title_copyright, title_seriesnum,' \
+      + ' titles.title_id, title_seriesnum_2' \
       + (defined?(LIMIT) ? " LIMIT #{LIMIT}" : '') \
     ]
     puts "Serializing Tree #{pubs.count} #{'Root'.pluralize(pubs.count)}"
     pubs.each_with_index do |pub, idx|
       next if pub[:title] == 'untitled' # an artist or editor award
+      pub[:tid] = pub[:tid].to_i
+      pub[:parent] = pub[:parent].to_i
       work = workFor(
         title: pub[:title], creators: pub[:author], is_movie: pub[:movie],
-        copyright: pub[:cpdate], type: pub[:ttype]
+        copyright: pub[:cpdate], type: pub[:ttype],
+        isfdbID: (pub[:parent] != 0 ? pub[:parent] : pub[:tid]),
       )
       series = Series.find_or_create_by(
         title: Nokogiri::HTML.parse(pub[:series]).text, isfdbID: pub[:sid]
@@ -194,6 +200,8 @@ namespace :isfdb do
     pubs = DB[ # first level of children
       'SELECT DISTINCT' \
       + ' series.series_id AS sid,' \
+      + ' titles.title_id AS tid,' \
+      + ' title_parent AS parent,' \
       + ' series_title AS series,' \
       + ' title_title AS title,' \
       + ' title_ttype AS ttype,' \
@@ -214,14 +222,27 @@ namespace :isfdb do
     ]
     pubs.each_with_index do |pub, idx|
       next if pub[:title] == 'untitled' # an artist or editor award
+      pub[:tid] = pub[:tid].to_i
+      pub[:parent] = pub[:parent].to_i
       work = workFor(
         title: pub[:title], creators: pub[:author], is_movie: pub[:movie],
-        copyright: pub[:cpdate], type: pub[:ttype]
+        copyright: pub[:cpdate], type: pub[:ttype],
+        isfdbID: (pub[:parent] != 0 ? pub[:parent] : pub[:tid]),
       )
       parent = Series.find_by(isfdbID: pub[:parent])
       unless parent
-        puts "Error: Missing Parent: #{pub[:parent]} (#{pub[:title]})"
-        next
+        puts "Error: Missing Parent: #{pub[:parent]}/#{pub[:sid]} (#{pub[:title]})"
+        series = DB[
+          'SELECT DISTINCT' \
+          + ' series.series_id AS id,' \
+          + ' series_title AS title' \
+          + ' FROM series' \
+          + " WHERE series.series_id = #{pub[:parent]}" \
+        ]
+        parent = Series.find_or_create_by(
+          title: Nokogiri::HTML.parse(series[:title]).text, isfdbID: series[:id]
+        )
+        puts "  Created #{parent.title}"
       end
       series = Series.find_or_create_by(
         title: Nokogiri::HTML.parse(pub[:series]).text, isfdbID: pub[:sid]

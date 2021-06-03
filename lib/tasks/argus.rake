@@ -106,6 +106,21 @@ namespace :argus do
     end
   end
 
+  desc 'Generate the context tree for books.'
+  task(context: :environment) do |t, args|
+    q = Neo4j::ActiveBase.current_session.query(
+      'MATCH (creators:Creators)-->(book:Book)' \
+      + ' MERGE (:Root)-[:CHILD {name: "book"}]->' \
+      + ' (:Position)-[:CHILD {name: "by"}]->' \
+      + ' (:Position)-[:CHILD {name: creators.name}]->' \
+      + ' (pc:Position)-[:CHILD {name: book.title}]->' \
+      + ' (pb:Position),' \
+      + ' (pc)-[:EQUALS]->(creators),' \
+      + ' (pb)-[:EQUALS]->(book)' \
+      + ' LIMIT 10'
+    )
+  end
+
   desc 'Find Git repositories, export to IPFS, and save the CID'
   task(:repos, [:dir] => [:environment]) do |t, args|
     save = ->(dir) {

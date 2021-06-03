@@ -5,5 +5,5 @@ class Content
   property :url, type: String
   include ActiveGraph::Timestamps
 
-  has_many :in, :versions, type: :CVR
+  has_many :in, :versions, type: :COVER
 end
