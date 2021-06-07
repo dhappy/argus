@@ -108,17 +108,128 @@ namespace :argus do
 
   desc 'Generate the context tree for books.'
   task(context: :environment) do |t, args|
-    q = Neo4j::ActiveBase.current_session.query(
-      'MATCH (creators:Creators)-->(book:Book)' \
-      + ' MERGE (:Root)-[:CHILD {name: "book"}]->' \
-      + ' (:Position)-[:CHILD {name: "by"}]->' \
-      + ' (:Position)-[:CHILD {name: creators.name}]->' \
-      + ' (pc:Position)-[:CHILD {name: book.title}]->' \
-      + ' (pb:Position),' \
-      + ' (pc)-[:EQUALS]->(creators),' \
-      + ' (pb)-[:EQUALS]->(book)' \
-      + ' LIMIT 10'
+    # q = Neo4j::ActiveBase.current_session.query(
+    #   'CREATE BTREE INDEX book_names IF NOT EXISTS' \
+    #   + ' FOR (b:Book) ON (b.title)'
+    # )
+    # q = Neo4j::ActiveBase.current_session.query(
+    #   'CREATE BTREE INDEX creators_names IF NOT EXISTS' \
+    #   + ' FOR (c:Creators) ON (c.name)'
+    # )
+    root = Root.first
+    bookNode = (
+      root.query_as(:r)
+      .match('(r)-[rel:CHILD { name: "book" }]->(bk)')
+      .pluck(:bk)
+      .first
     )
+    if(bookNode.nil?)
+      bookNode = Position.new
+      Context.create(
+        from_node: root, to_node: bookNode, name: 'book'
+      )
+    end
+    byNode = (
+      bookNode.query_as(:bk)
+      .match('(bk)-[rel:CHILD { name: "by" }]->(by)')
+      .pluck(:by)
+      .first
+    )
+    if(byNode.nil?)
+      byNode = Position.new
+      Context.create(
+        from_node: bookNode, to_node: byNode, name: 'by'
+      )
+    end
+
+    Creators.all.each do |creators|
+      creatorsNode = (
+        byNode.query_as(:by)
+        .match('(by)-[rel:CHILD]->(cr)')
+        .where({ rel: { name: creators.name } })
+        .pluck(:cr)
+        .first
+      )
+      if(creatorsNode.nil?)
+        creatorsNode = Position.new
+        Context.create(
+          from_node: byNode, to_node: creatorsNode,
+          name: creators.name
+        )
+      end
+      creatorsNode.update(equals: creators)
+      creators.books.each do |book|
+        bookNode = (
+          creatorsNode.query_as(:cr)
+          .match('(cr)-[rel:CHILD]->(bk)')
+          .where({ rel: { name: book.title } })
+          .pluck(:bk)
+          .first
+        )
+        title = "#{book.title} by #{creators.name}"
+        if(bookNode.nil?)
+          bookNode = Position.new
+          Context.create(
+            from_node: creatorsNode, to_node: bookNode,
+            name: book.title
+          )
+          puts "Created Path For: #{title}"
+        else
+          puts "Skipped Existing: #{title}"
+        end
+        bookNode.update(equals: book)
+      end
+    end
+
+    awardNode = (
+      root.query_as(:r)
+      .match('(r)-[rel:CHILD { name: "award" }]->(bk)')
+      .pluck(:bk)
+      .first
+    )
+    if(awardNode.nil?)
+      awardNode = Position.new
+      Context.create(
+        from_node: root, to_node: awardNode, name: 'award'
+      )
+    end
+
+
+    # q = Neo4j::ActiveBase.current_session.query(
+    #   'MATCH (creators:Creators)-->(book:Book)' \
+    #   + ' MERGE (:Root)-[:CHILD {name: "book"}]->' \
+    #   + ' (:Position)-[:CHILD {name: "by"}]->' \
+    #   + ' (:Position)-[:CHILD {name: creators.name}]->' \
+    #   + ' (pc:Position)-[:CHILD {name: book.title}]->' \
+    #   + ' (pb:Position)' \
+    #   + ' MERGE (pc)-[:EQUALS]->(creators)' \
+    #   + ' MERGE (pb)-[:EQUALS]->(book)'
+    # )
+    # q = Neo4j::ActiveBase.current_session.query(
+    #   'MATCH (award:Award)-->(year:Year)-->' \
+    #   + ' (category:Category)-->(book:Book)' \
+    #   + ' <--(creators:Creators)' \
+    #   + ' MERGE (:Root)-[:CHILD {name: "award"}]->' \
+    #   + ' (:Position)-[:CHILD {name: award.title}]->' \
+    #   + ' (:Position)-[:CHILD {name: year.number}]->' \
+    #   + ' (:Position)-[:CHILD {name: category.title}]->' \
+    #   + ' (:Position)-[:CHILD' \
+    #   + ' {name: book.title + " by " + creators.name}]->' \
+    #   + ' (pb:Position)' \
+    #   + ' MERGE (pb)-[:EQUALS]->(book)'
+    # )
+    # q = Neo4j::ActiveBase.current_session.query(
+    #   'MATCH (series)-->(book:Book)' \
+    #   + ' <--(creators:Creators)' \
+    #   + ' MERGE (:Root)-[:CHILD {name: "series"}]->' \
+    #   + ' (:Position)-[:CHILD {name: award.title}]->' \
+    #   + ' (:Position)-[:CHILD {name: year.number}]->' \
+    #   + ' (:Position)-[:CHILD {name: category.title}]->' \
+    #   + ' (:Position)-[:CHILD' \
+    #   + ' {name: book.title + " by " + creators.name}]->' \
+    #   + ' (pb:Position)' \
+    #   + ' MERGE (pb)-[:EQUALS]->(book)'
+    # )
   end
 
   desc 'Find Git repositories, export to IPFS, and save the CID'
