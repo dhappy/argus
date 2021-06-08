@@ -12,4 +12,7 @@ docker run \
   -v $HOME/neo4j/plugins:/plugins \
   --env NEO4J_AUTH=none \
   --env NEO4JLABS_PLUGINS='["apoc","graph-data-science"]' \
+  --env NEO4J_apoc_import_file_enabled=true \
+  --env NEO4J_apoc_export_file_enabled=true \
+  --env NEO4J_dbms_security_procedures_unrestricted=apoc.\\\*,gds.\\\* \
   neo4j:latest

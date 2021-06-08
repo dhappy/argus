@@ -183,8 +183,8 @@ namespace :argus do
 
     awardNode = (
       root.query_as(:r)
-      .match('(r)-[rel:CHILD { name: "award" }]->(bk)')
-      .pluck(:bk)
+      .match('(r)-[rel:CHILD { name: "award" }]->(aw)')
+      .pluck(:aw)
       .first
     )
     if(awardNode.nil?)
@@ -193,7 +193,75 @@ namespace :argus do
         from_node: root, to_node: awardNode, name: 'award'
       )
     end
+    Award.all.each do |award|
+      award.years.each do |year|
+        yearNode = (
+          awardNode.query_as(:aw)
+          .match('(aw)-[rel:CHILD]->(yr)')
+          .where({ rel: { name: year.number.to_s } })
+          .pluck(:yr)
+          .first
+        )
+        if(yearNode.nil?)
+          yearNode = Position.new
+          Context.create(
+            from_node: awardNode, to_node: yearNode, name: year.number.to_s
+          )
+        end
 
+        year.categories.each do |category|
+          catNode = (
+            yearNode.query_as(:yr)
+            .match('(yr)-[rel:CHILD]->(ct)')
+            .where({ rel: { name: category.title } })
+            .pluck(:ct)
+            .first
+          )
+          if(catNode.nil?)
+            catNode = Position.new
+            Context.create(
+              from_node: yearNode, to_node: catNode, name: category.title
+            )
+          end
+
+          category.nominees.each do |work|
+            title = "#{work.title} by #{work.creators.name}"
+            searchWorkNode = (
+              catNode.query_as(:aw)
+              .match('(ct)-[rel:CHILD]->(wk)')
+              .where({ rel: { name: title } })
+              .pluck(:wk)
+              .first
+            )
+            # All books have an entry, so this should be set
+            referencedWorkNode = work.position
+            if(
+              searchWorkNode.present? \
+              && referencedWorkNode.present? \
+              && searchWorkNode != referencedWorkNode
+            )
+              puts "Error: Multiple Work Positions: #{searchWorkNode.uuid} & #{referencedWorkNode.uuid}"
+            end
+            if(searchWorkNode.present?)
+              puts "Skipped Existing: (#{award.shortname}): #{title}"
+            else
+              workNode = referencedWorkNode || Position.new
+              Context.create(
+                from_node: catNode, to_node: workNode, name: title
+              )
+              if(workNode != referencedWorkNode)
+                work.update(equals: workNode)
+              end
+              puts "Created Path For: (#{award.shortname}): #{title}"
+            end
+          end
+        end
+        awardNode
+        # /award/Hugo Award/1973/Best Novel/1
+        # /award/Hugo Award/1973/Best Novel/Crake by Margret Atwood
+        # /award/Hugo Award/Best Novel/1973/↑
+      end
+    end
 
     # q = Neo4j::ActiveBase.current_session.query(
     #   'MATCH (creators:Creators)-->(book:Book)' \
