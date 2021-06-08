@@ -42,25 +42,12 @@ namespace :isfdb do
 
   desc 'Import award winners and nominees'
   task(awards: :environment) do |t, args|
-    TTYPES = \
-      "'ANTHOLOGY','COLLECTION','NOVEL','NONFICTION'," \
-      + "'OMNIBUS','POEM','SHORTFICTION','CHAPBOOK'"
-    LEVELS = {
-      '71': 'No Winner -- Insufficient Votes',
-      '72': 'Not on ballot -- Insufficient Nominations',
-      '73': 'No Award Given This Year',
-      '81': 'Withdrawn',
-      '82': 'Withdrawn -- Nomination Declined',
-      '83': 'Withdrawn -- Conflict of Interest',
-      '84': 'Withdrawn -- Official Publication in a Previous Year',
-      '85': 'Withdrawn -- Ineligible',
-      '90': 'Finalists',
-      '91': 'Made First Ballot',
-      '92': "Preliminary Nominees",
-      '93': 'Honorable Mentions',
-      '98': 'Early Submissions',
-      '99': 'Nominations Below Cutoff',
-    }
+    TTYPES = %w(
+      ANTHOLOGY COLLECTION NOVEL NONFICTION
+      OMNIBUS POEM SHORTFICTION CHAPBOOK
+    )
+    .map{ |str| "'#{str}'"}
+    .join(?,)
 
     types = DB[
       'SELECT DISTINCT' \
@@ -128,8 +115,8 @@ namespace :isfdb do
         if work.nominations.include?(category)
           puts "  #{Time.now.iso8601}: #{idx}/#{entries.count}: Skipping: #{award.title}: #{year.number}: #{work}"
         else
-          puts "  #{Time.now.iso8601}: #{idx}/#{entries.count}:  Linking: #{award.title}: #{year.number}: #{work}"
-          Nominated.create(
+          puts "  #{Time.now.iso8601}: #{idx}/#{entries.count}:  Linking: #{award.title}: #{year.number}: #{work} (#{entry[:level]})"
+          Nominee.create(
             from_node: category, to_node: work, result: entry[:level]
           )
         end

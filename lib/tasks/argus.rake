@@ -107,7 +107,7 @@ namespace :argus do
   end
 
   desc 'Generate the context tree for books.'
-  task(context: :environment) do |t, args|
+  task(:context, [:skip] => [:environment]) do |t, args|
     # q = Neo4j::ActiveBase.current_session.query(
     #   'CREATE BTREE INDEX book_names IF NOT EXISTS' \
     #   + ' FOR (b:Book) ON (b.title)'
@@ -116,150 +116,193 @@ namespace :argus do
     #   'CREATE BTREE INDEX creators_names IF NOT EXISTS' \
     #   + ' FOR (c:Creators) ON (c.name)'
     # )
+    skip = args.map(&:to_sym)
     root = Root.first
-    bookNode = (
-      root.query_as(:r)
-      .match('(r)-[rel:CHILD { name: "book" }]->(bk)')
-      .pluck(:bk)
-      .first
-    )
-    if(bookNode.nil?)
-      bookNode = Position.new
-      Context.create(
-        from_node: root, to_node: bookNode, name: 'book'
-      )
-    end
-    byNode = (
-      bookNode.query_as(:bk)
-      .match('(bk)-[rel:CHILD { name: "by" }]->(by)')
-      .pluck(:by)
-      .first
-    )
-    if(byNode.nil?)
-      byNode = Position.new
-      Context.create(
-        from_node: bookNode, to_node: byNode, name: 'by'
-      )
-    end
-
-    Creators.all.each do |creators|
-      creatorsNode = (
-        byNode.query_as(:by)
-        .match('(by)-[rel:CHILD]->(cr)')
-        .where({ rel: { name: creators.name } })
-        .pluck(:cr)
+    if not skip.include?(:book)
+      bookNode = (
+        root.query_as(:r)
+        .match('(r)-[rel:CHILD { name: "book" }]->(bk)')
+        .pluck(:bk)
         .first
       )
-      if(creatorsNode.nil?)
-        creatorsNode = Position.new
+      if(bookNode.nil?)
+        bookNode = Position.new
         Context.create(
-          from_node: byNode, to_node: creatorsNode,
-          name: creators.name
+          from_node: root, to_node: bookNode, name: 'book'
         )
       end
-      creatorsNode.update(equals: creators)
-      creators.books.each do |book|
-        bookNode = (
-          creatorsNode.query_as(:cr)
-          .match('(cr)-[rel:CHILD]->(bk)')
-          .where({ rel: { name: book.title } })
-          .pluck(:bk)
-          .first
-        )
-        title = "#{book.title} by #{creators.name}"
-        if(bookNode.nil?)
-          bookNode = Position.new
-          Context.create(
-            from_node: creatorsNode, to_node: bookNode,
-            name: book.title
-          )
-          puts "Created Path For: #{title}"
-        else
-          puts "Skipped Existing: #{title}"
-        end
-        bookNode.update(equals: book)
-      end
-    end
-
-    awardNode = (
-      root.query_as(:r)
-      .match('(r)-[rel:CHILD { name: "award" }]->(aw)')
-      .pluck(:aw)
-      .first
-    )
-    if(awardNode.nil?)
-      awardNode = Position.new
-      Context.create(
-        from_node: root, to_node: awardNode, name: 'award'
+      byNode = (
+        bookNode.query_as(:bk)
+        .match('(bk)-[rel:CHILD { name: "by" }]->(by)')
+        .pluck(:by)
+        .first
       )
-    end
-    Award.all.each do |award|
-      award.years.each do |year|
-        yearNode = (
-          awardNode.query_as(:aw)
-          .match('(aw)-[rel:CHILD]->(yr)')
-          .where({ rel: { name: year.number.to_s } })
-          .pluck(:yr)
+      if(byNode.nil?)
+        byNode = Position.new
+        Context.create(
+          from_node: bookNode, to_node: byNode, name: 'by'
+        )
+      end
+
+      Creators.all.each do |creators|
+        creatorsNode = (
+          byNode.query_as(:by)
+          .match('(by)-[rel:CHILD]->(cr)')
+          .where({ rel: { name: creators.name } })
+          .pluck(:cr)
           .first
         )
-        if(yearNode.nil?)
-          yearNode = Position.new
+        if(creatorsNode.nil?)
+          creatorsNode = Position.new
           Context.create(
-            from_node: awardNode, to_node: yearNode, name: year.number.to_s
+            from_node: byNode, to_node: creatorsNode,
+            name: creators.name
           )
         end
+        creatorsNode.update(equals: creators)
 
-        year.categories.each do |category|
-          catNode = (
-            yearNode.query_as(:yr)
-            .match('(yr)-[rel:CHILD]->(ct)')
-            .where({ rel: { name: category.title } })
-            .pluck(:ct)
+        creators.books.each do |book|
+          bookNode = (
+            creatorsNode.query_as(:cr)
+            .match('(cr)-[rel:CHILD]->(bk)')
+            .where({ rel: { name: book.title } })
+            .pluck(:bk)
             .first
           )
-          if(catNode.nil?)
-            catNode = Position.new
+          title = "#{book.title} by #{creators.name}"
+
+          if(bookNode.nil?)
+            bookNode = Position.new
             Context.create(
-              from_node: yearNode, to_node: catNode, name: category.title
+              from_node: creatorsNode, to_node: bookNode,
+              name: book.title
             )
+            puts "Created Path For: #{title}"
+          else
+            puts "Skipped Existing: #{title}"
+          end
+          bookNode.update(equals: book)
+        end
+      end
+    end
+    if not skip.include?(:award)
+      awardContextNode = (
+        root.query_as(:r)
+        .match('(r)-[rel:CHILD { name: "award" }]->(aw)')
+        .pluck(:aw)
+        .first
+      )
+      if(awardContextNode.nil?)
+        awardContextNode = Position.new
+        Context.create(
+          from_node: root, to_node: awardContextNode, name: 'award'
+        )
+      end
+      Award.all.each do |award|
+        awardNode = (
+          awardContextNode.query_as(:ac)
+          .match('(ac)-[rel:CHILD]->(aw)')
+          .where({ rel: { name: award.title } })
+          .pluck(:aw)
+          .first
+        )
+        if(awardNode.nil?)
+          awardNode = Position.new
+          Context.create(
+            from_node: awardContextNode, to_node: awardNode, name: award.title
+          )
+          awardNode.update(equals: award)
+        end
+
+        award.years.each do |year|
+          yearNode = (
+            awardNode.query_as(:aw)
+            .match('(aw)-[rel:CHILD]->(yr)')
+            .where({ rel: { name: year.number.to_s } })
+            .pluck(:yr)
+            .first
+          )
+          if(yearNode.nil?)
+            yearNode = Position.new
+            Context.create(
+              from_node: awardNode, to_node: yearNode, name: year.number.to_s
+            )
+            yearNode.update(equals: year)
           end
 
-          category.nominees.each do |work|
-            title = "#{work.title} by #{work.creators.name}"
-            searchWorkNode = (
-              catNode.query_as(:aw)
-              .match('(ct)-[rel:CHILD]->(wk)')
-              .where({ rel: { name: title } })
-              .pluck(:wk)
+          year.categories.each do |category|
+            catNode = (
+              yearNode.query_as(:yr)
+              .match('(yr)-[rel:CHILD]->(ct)')
+              .where({ rel: { name: category.title } })
+              .pluck(:ct)
               .first
             )
-            # All books have an entry, so this should be set
-            referencedWorkNode = work.position
-            if(
-              searchWorkNode.present? \
-              && referencedWorkNode.present? \
-              && searchWorkNode != referencedWorkNode
-            )
-              puts "Error: Multiple Work Positions: #{searchWorkNode.uuid} & #{referencedWorkNode.uuid}"
-            end
-            if(searchWorkNode.present?)
-              puts "Skipped Existing: (#{award.shortname}): #{title}"
-            else
-              workNode = referencedWorkNode || Position.new
+            if(catNode.nil?)
+              catNode = Position.new
               Context.create(
-                from_node: catNode, to_node: workNode, name: title
+                from_node: yearNode, to_node: catNode, name: category.title
               )
-              if(workNode != referencedWorkNode)
-                work.update(equals: workNode)
+              catNode.update(equals: category)
+            end
+
+            category.nominees.each_with_rel do |work, relation|
+              title = "#{work.title} by #{work.creators.name}"
+              searchWorkNode = (
+                catNode.query_as(:ct)
+                .match('(ct)-[rel:CHILD]->(wk)')
+                .where({ rel: { name: title } })
+                .pluck(:wk)
+                .first
+              )
+              # All books have an entry, so this should be set (but it isn't…)
+              referencedWorkNode = work.position
+              if(
+                searchWorkNode.present? \
+                && referencedWorkNode.present? \
+                && searchWorkNode != referencedWorkNode
+              )
+                puts "Error: Multiple Work Positions: #{searchWorkNode.uuid} & #{referencedWorkNode.uuid}"
               end
-              puts "Created Path For: (#{award.shortname}): #{title}"
+              if searchWorkNode.present?
+                puts "Skipped Existing: (#{award.shortname}): #{title}"
+              else
+                workNode = referencedWorkNode || Position.new
+                Context.create(
+                  from_node: catNode, to_node: workNode, name: title
+                )
+                print "Created Path For: (#{award.shortname}): #{title}"
+                if(workNode != referencedWorkNode)
+                  workNode.update(equals: work)
+                  puts ' *'
+                else
+                  puts
+                end
+
+                if relation.result.present?
+                  rankNode = (
+                    catNode.query_as(:ct)
+                    .match('(ct)-[rel:CHILD]->(wk)')
+                    .where({ rel: { name: relation.result } })
+                    .pluck(:wk)
+                    .first
+                  )
+                  if rankNode.present?
+                    puts "Skipped Existing: (#{award.shortname}): #{title} (#{relation.result})"
+                  else
+                    Context.create(
+                      from_node: catNode, to_node: workNode,
+                      name: relation.result
+                    )
+                  end
+                end
+              end
             end
           end
+          # /award/Hugo Award/1973/Best Novel/1
+          # /award/Hugo Award/1973/Best Novel/Crake by Margret Atwood
+          # /award/Hugo Award/Best Novel/1973/↑
         end
-        awardNode
-        # /award/Hugo Award/1973/Best Novel/1
-        # /award/Hugo Award/1973/Best Novel/Crake by Margret Atwood
-        # /award/Hugo Award/Best Novel/1973/↑
       end
     end
 

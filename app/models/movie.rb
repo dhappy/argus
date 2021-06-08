@@ -14,6 +14,7 @@ class Movie
   has_one :in, :creators, type: :CREATED, model_class: :Creators
   has_many :in, :nominations, rel_class: :Nominee, unique: true
   has_many :in, :series, rel_class: :Contains, unique: true
+  has_one :in, :position, type: :EQUALS, model_class: :Position
 
   def to_s
     "#{self.title} by #{self.creators&.name}"
