@@ -20,6 +20,16 @@ const getUUID = (result) => (
   result.records[0]?.get(0)?.properties.uuid
 )
 
+const capitalize = (str) => (
+  str.split(/\s+/g)
+  .map((sub) => (`${
+    sub?.[0]?.toUpperCase() ?? ''
+  }${
+    sub?.substring(1)?.toLowerCase() ?? ''
+  }`))
+  .join(' ')
+)
+
 const driver = (
   neo4j.driver(
     'bolt://localhost',
@@ -77,8 +87,8 @@ const setUUIDs = async (label) => {
   await setUUIDs('Award')
   await setUUIDs('Category')
   await setUUIDs('Year')
-  await setUUIDs('Book')
-  await setUUIDs('Author')
+  await setUUIDs('Work')
+  await setUUIDs('Creator')
   await setUUIDs('Nominee')
   await setUUIDs('Edition')
   await setUUIDs('Publisher')
@@ -95,149 +105,177 @@ const setUUIDs = async (label) => {
     )
     const awardUUID = getUUID(result)
 
-    const nomineesQuery = (`
-      SELECT
-      award_title AS title,
-      award_author AS author,
-      award_cat_name AS cat,
-      award_year AS year,
-      award_movie AS movie,
-      title_id AS tid,
-      title_parent AS parent,
-      title_ttype AS ttype,
-      title_copyright AS cpdate,
-      award_level AS level
-      FROM awards
-      INNER JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id
-      INNER JOIN titles ON title_title = award_title
-      WHERE award_type_id = ?
-      AND title_ttype IN (?)
-      LIMIT 500
-    `)
-    const TTYPES = [
-      'ANTHOLOGY', 'COLLECTION', 'NOVEL', 'NONFICTION',
-      'OMNIBUS', 'POEM', 'SHORTFICTION', 'CHAPBOOK',
-    ]
+    const LIMIT = null //1 // return limit for debugging purposes
+    let done = false
+    let count = 0
+    // limit to paginate & avoid overflowing the stack
+    const limit = Math.min(LIMIT ?? Number.MAX_VALUE, 500)
+    while(!done) {
+      const TYPES = [
+        'ANTHOLOGY', 'COLLECTION', 'NOVEL', 'NONFICTION',
+        'OMNIBUS', 'POEM', 'SHORTFICTION', 'CHAPBOOK',
+      ]
+      const nomineesQuery = (`
+        SELECT
+        award_title AS title,
+        award_author AS author,
+        award_cat_name AS cat,
+        award_year AS year,
+        award_movie AS movie,
+        title_id AS tid,
+        title_parent AS parent,
+        title_ttype AS type,
+        title_copyright AS copyright,
+        award_level AS level
+        FROM awards
+        INNER JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id
+        INNER JOIN titles ON title_title = award_title
+        WHERE award_type_id = ?
+        AND title_ttype IN (?)
+        AND award_title != 'untitled' -- people awards, not books
+        LIMIT ${limit}
+        OFFSET ${count++ * limit}
+      `)
 
-    const [raws, fields] = (
-      await connection.query(
-        nomineesQuery, [award.id, TTYPES],
+      const [raws, fields] = (
+        await connection.query(
+          nomineesQuery, [award.id, TYPES],
+        )
       )
-    )
-    const rows = raws.map((row) => ({
-      ...row,
-      title: derefEntities(row.title),
-      authors: derefEntities(row.author).split('+'),
-      cat: optNameArray(row.cat),
-    }))
-    
-    for(
-      const {
-        title, author, authors, cat, year, movie,
-        tid, parent, ttype, cpdate, level,
-      }
-      of
-      rows
-    ) {
-      if(title === 'untitled') {
-        console.info(
-          `Skipping ${authors.length > 0 ? `${authors.join("'s & ")}'s` : ''}${
-          ' '}Entry in ${cat} ("untitled")`)
-      } else {
-        console.info(`Processing: ${title} by ${authors.join(' & ')}`)
+      
+      done = (count * limit > LIMIT || raws.length === 0)
 
-        let result = await neoExec(
-          `
-            MERGE (c:Category {name: $name})
-            ON CREATE SET c.uuid = apoc.create.uuid()
-            RETURN c
-          `,
-          { name: cat },
-        )
-        const catUUID = getUUID(result)
-    
-        result = await neoExec(
-          `
-            MATCH (c:Category {uuid: $catUUID})
-            MATCH (a:Award {uuid: $awardUUID})
-            MERGE (c)-[:OF]->(a)
-          `,
-          { catUUID, awardUUID },
-        )
+      const rows = raws.map((row) => ({
+        ...row,
+        title: derefEntities(row.title),
+        authors: derefEntities(row.author).split('+'),
+        cat: optNameArray(row.cat),
+      }))
+      
+      for(
+        let {
+          title, authors, cat, year, movie,
+          tid, parent, type, copyright, level,
+        }
+        of
+        rows
+      ) {
+        if(title === 'untitled') {
+          console.info(
+            `Skipping ${authors.length > 0 ? `${authors.join("'s & ")}'s` : ''}${
+            ' '}Entry in ${cat} ("untitled")`
+          )
+        } else {
+          console.info(`Processing: ${title} by ${authors.join(' & ')}`)
 
-        result = await neoExec(
-          `
-            MERGE (y:Year {number: $number})
-            ON CREATE SET y.uuid = apoc.create.uuid()
-            RETURN y
-          `,
-          { number: year.getFullYear() },
-        )
-        const yearUUID = getUUID(result)
+          let result = await neoExec(
+            `
+              MERGE (c:Category {name: $name})
+              ON CREATE SET c.uuid = apoc.create.uuid()
+              RETURN c
+            `,
+            { name: cat },
+          )
+          const catUUID = getUUID(result)
+      
+          result = await neoExec(
+            `
+              MATCH (c:Category {uuid: $catUUID})
+              MATCH (a:Award {uuid: $awardUUID})
+              MERGE (c)-[:OF]->(a)
+            `,
+            { catUUID, awardUUID },
+          )
 
-        const authorUUIDs = await Promise.all(
-          authors.map(async (author) => {
-            const result = await neoExec(
-              `
-                MERGE (a:Author {name: $name})
-                ON CREATE SET a.uuid = apoc.create.uuid()
-                RETURN a
-              `,
-              { name: author },
-            )
-            return getUUID(result)
-          })
-        )
+          result = await neoExec(
+            `
+              MERGE (y:Year {number: $number})
+              ON CREATE SET y.uuid = apoc.create.uuid()
+              RETURN y
+            `,
+            { number: year.getFullYear() },
+          )
+          const yearUUID = getUUID(result)
 
-        let cypher = (
-          authorUUIDs.map((uuid, i) => (
-            `MATCH (a${i}:Author {uuid: "${uuid}"})\n`
-          ))
-          .join('')
-        )
-        cypher += "MERGE (b:Book {title: $title})\n"
-        cypher += (
-          authorUUIDs.map((uuid, i) => (
-            `MERGE (b)-[r${i}:BY]->(a${i})\n`
-          ))
-          .join('')
-        )
-        cypher += "ON CREATE SET b.uuid = apoc.create.uuid()\n"
-        if(authors.length > 1) {
-          cypher += (
-            authorUUIDs.map((uuid, i) => (
-              `SET r${i}.rank = ${i + 1}\n`
+          const creatorUUIDs = await Promise.all(
+            authors.map(async (author) => {
+              const result = await neoExec(
+                `
+                  MERGE (a:Creator:${movie ? 'Director' : 'Author'} {name: $name})
+                  ON CREATE SET a.uuid = apoc.create.uuid()
+                  RETURN a
+                `,
+                { name: author },
+              )
+              return getUUID(result)
+            })
+          )
+
+          if(type === 'SHORTFICTION') {
+            type = 'Short Fiction'
+          }
+          type = capitalize(type)
+
+          copyright = copyright?.toISOString?.()
+
+          let cypher = (
+            creatorUUIDs.map((uuid, i) => (
+              `MATCH (c${i}:Creator {uuid: "${uuid}"})\n`
             ))
             .join('')
           )
+          cypher += (
+            `MERGE (w:Work:${movie ? 'Movie' : 'Book'} {title: $title})\n`
+          )
+          cypher += (
+            creatorUUIDs.map((uuid, i) => (
+              `MERGE (w)-[r${i}:BY]->(a${i})\n`
+            ))
+            .join('')
+          )
+          cypher += (
+            `ON CREATE SET w.uuid = apoc.create.uuid(), w.type = $type\n`
+          )
+          if(authors.length > 1) {
+            cypher += (
+              creatorUUIDs.map((uuid, i) => (
+                `ON CREATE SET r${i}.rank = ${i + 1}\n`
+              ))
+              .join('')
+            )
+          }
+          cypher += (
+            `ON CREATE SET w.copyright = $copyright\n`
+          )
+          cypher += 'RETURN w'
+          result = await neoExec(
+            cypher, { title, type, copyright }
+          )
+          const workUUID = getUUID(result)
+
+          result = await neoExec(
+            `
+              MATCH (w:Work {uuid: $workUUID})
+              MATCH (y:Year {uuid: $yearUUID})
+              MATCH (c:Category {uuid: $catUUID})
+              MATCH (a:Award {uuid: $awardUUID})
+              WHERE NOT EXISTS((a)<-[:FOR]-()-[:IN]->(y))
+              CREATE (n:Nominee${level === '1' ? ':Winner' : ''})
+              CREATE (n)-[:IS]->(w)
+              CREATE (n)-[:IN]->(y)
+              CREATE (n)-[:OF]->(c)
+              CREATE (n)-[:FOR]->(a)
+              SET n.uuid = apoc.create.uuid()
+              RETURN n
+            `,
+            { workUUID, yearUUID, catUUID, awardUUID },
+          )
+          const nomineeUUID = getUUID(result)
+
+          console.info(`  Created: (${award.shortname}) ${title}`)
         }
-        cypher += 'RETURN b'
-        result = await neoExec(cypher, { title })
-        const bookUUID = getUUID(result)
-
-        result = await neoExec(
-          `
-            MATCH (b:Book {uuid: $bookUUID})
-            MATCH (y:Year {uuid: $yearUUID})
-            MATCH (c:Category {uuid: $catUUID})
-            MATCH (a:Award {uuid: $awardUUID})
-            WHERE NOT EXISTS((a)<-[:FOR]-()-[:IN]->(y))
-            CREATE (n:Nominee${level === '1' ? ':Winner' : ''})
-            CREATE (n)-[:IS]->(b)
-            CREATE (n)-[:IN]->(y)
-            CREATE (n)-[:OF]->(c)
-            CREATE (n)-[:FOR]->(a)
-            SET n.uuid = apoc.create.uuid()
-            RETURN n
-          `,
-          { bookUUID, yearUUID, catUUID, awardUUID },
-        )
-        const nomineeUUID = getUUID(result)
-
-        console.info(`  Creating: ${title}`)
       }
     }
-
   
     //console.log(node.properties.name)
   }))
