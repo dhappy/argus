@@ -16,6 +16,10 @@ const optNameArray = (raw, splitOn = /\s+\/\s+/) => {
   return (names.length <= 1) ? names[0] : names
 }
 
+const getUUID = (result) => (
+  result.records[0]?.get(0)?.properties.uuid
+)
+
 const driver = (
   neo4j.driver(
     'bolt://localhost',
@@ -89,7 +93,7 @@ const setUUIDs = async (label) => {
       `,
       award,
     )
-    const awardNode = result.records[0].get(0)
+    const awardUUID = getUUID(result)
 
     const nomineesQuery = (`
       SELECT
@@ -108,7 +112,7 @@ const setUUIDs = async (label) => {
       INNER JOIN titles ON title_title = award_title
       WHERE award_type_id = ?
       AND title_ttype IN (?)
-      LIMIT 3
+      LIMIT 500
     `)
     const TTYPES = [
       'ANTHOLOGY', 'COLLECTION', 'NOVEL', 'NONFICTION',
@@ -136,7 +140,9 @@ const setUUIDs = async (label) => {
       rows
     ) {
       if(title === 'untitled') {
-        console.info(`Skipping ${authors.join("'s & ")}'s Entry in ${cat} ("untitled")`)
+        console.info(
+          `Skipping ${authors.length > 0 ? `${authors.join("'s & ")}'s` : ''}${
+          ' '}Entry in ${cat} ("untitled")`)
       } else {
         console.info(`Processing: ${title} by ${authors.join(' & ')}`)
 
@@ -148,7 +154,7 @@ const setUUIDs = async (label) => {
           `,
           { name: cat },
         )
-        const catNode = result.records[0].get(0)
+        const catUUID = getUUID(result)
     
         result = await neoExec(
           `
@@ -156,10 +162,7 @@ const setUUIDs = async (label) => {
             MATCH (a:Award {uuid: $awardUUID})
             MERGE (c)-[:OF]->(a)
           `,
-          {
-            catUUID: catNode.properties.uuid,
-            awardUUID: awardNode.properties.uuid,
-          },
+          { catUUID, awardUUID },
         )
 
         result = await neoExec(
@@ -170,9 +173,9 @@ const setUUIDs = async (label) => {
           `,
           { number: year.getFullYear() },
         )
-        const yearNode = result.records[0].get(0)
+        const yearUUID = getUUID(result)
 
-        const authorNodes = await Promise.all(
+        const authorUUIDs = await Promise.all(
           authors.map(async (author) => {
             const result = await neoExec(
               `
@@ -182,19 +185,19 @@ const setUUIDs = async (label) => {
               `,
               { name: author },
             )
-            return result.records[0].get(0)
+            return getUUID(result)
           })
         )
 
         let cypher = (
-          authorNodes.map((n, i) => (
-            `MATCH (a${i}:Author {uuid: "${n.properties.uuid}"})\n`
+          authorUUIDs.map((uuid, i) => (
+            `MATCH (a${i}:Author {uuid: "${uuid}"})\n`
           ))
           .join('')
         )
         cypher += "MERGE (b:Book {title: $title})\n"
         cypher += (
-          authorNodes.map((n, i) => (
+          authorUUIDs.map((uuid, i) => (
             `MERGE (b)-[r${i}:BY]->(a${i})\n`
           ))
           .join('')
@@ -202,7 +205,7 @@ const setUUIDs = async (label) => {
         cypher += "ON CREATE SET b.uuid = apoc.create.uuid()\n"
         if(authors.length > 1) {
           cypher += (
-            authorNodes.map((n, i) => (
+            authorUUIDs.map((uuid, i) => (
               `SET r${i}.rank = ${i + 1}\n`
             ))
             .join('')
@@ -210,7 +213,7 @@ const setUUIDs = async (label) => {
         }
         cypher += 'RETURN b'
         result = await neoExec(cypher, { title })
-        const bookNode = result.records[0].get(0)
+        const bookUUID = getUUID(result)
 
         result = await neoExec(
           `
@@ -218,23 +221,18 @@ const setUUIDs = async (label) => {
             MATCH (y:Year {uuid: $yearUUID})
             MATCH (c:Category {uuid: $catUUID})
             MATCH (a:Award {uuid: $awardUUID})
-            MERGE (n:Nominee)
-            MERGE (n)-[:IS]->(b)
-            MERGE (n)-[:IN]->(y)
-            MERGE (n)-[:OF]->(c)
-            MERGE (n)-[:FOR]->(a)
-            ON CREATE SET n.uuid = apoc.create.uuid()
+            WHERE NOT EXISTS((a)<-[:FOR]-()-[:IN]->(y))
+            CREATE (n:Nominee${level === '1' ? ':Winner' : ''})
+            CREATE (n)-[:IS]->(b)
+            CREATE (n)-[:IN]->(y)
+            CREATE (n)-[:OF]->(c)
+            CREATE (n)-[:FOR]->(a)
+            SET n.uuid = apoc.create.uuid()
             RETURN n
           `,
-          {
-            bookUUID: bookNode.properties.uuid,
-            yearUUID: yearNode.properties.uuid,
-            catUUID: catNode.properties.uuid,
-            awardUUID: awardNode.properties.uuid,
-          },
+          { bookUUID, yearUUID, catUUID, awardUUID },
         )
-        const nomineeNode = result.records[0].get(0)
-
+        const nomineeUUID = getUUID(result)
 
         console.info(`  Creating: ${title}`)
       }
