@@ -88,7 +88,7 @@ const setUUIDs = async (label) => {
   await setUUIDs('Category')
   await setUUIDs('Year')
   await setUUIDs('Work')
-  await setUUIDs('Creator')
+  await setUUIDs('Person')
   await setUUIDs('Nominee')
   await setUUIDs('Edition')
   await setUUIDs('Publisher')
@@ -105,7 +105,7 @@ const setUUIDs = async (label) => {
     )
     const awardUUID = getUUID(result)
 
-    const LIMIT = null //1 // return limit for debugging purposes
+    const LIMIT = 5 // return limit for debugging purposes
     let done = false
     let count = 0
     // limit to paginate & avoid overflowing the stack
@@ -121,25 +121,18 @@ const setUUIDs = async (label) => {
         award_author AS author,
         award_cat_name AS cat,
         award_year AS year,
-        award_movie AS movie,
-        title_id AS tid,
-        title_parent AS parent,
-        title_ttype AS type,
-        title_copyright AS copyright,
         award_level AS level
         FROM awards
-        INNER JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id
-        INNER JOIN titles ON title_title = award_title
+        LEFT JOIN award_cats ON awards.award_cat_id = award_cats.award_cat_id
         WHERE award_type_id = ?
-        AND title_ttype IN (?)
-        AND award_title != 'untitled' -- people awards, not books
+        AND (award_movie IS NULL OR award_movie = '')
         LIMIT ${limit}
         OFFSET ${count++ * limit}
       `)
 
       const [raws, fields] = (
         await connection.query(
-          nomineesQuery, [award.id, TYPES],
+          nomineesQuery, [award.id],
         )
       )
       
@@ -154,16 +147,16 @@ const setUUIDs = async (label) => {
       
       for(
         let {
-          title, authors, cat, year, movie,
-          tid, parent, type, copyright, level,
+          title, authors, cat, year, level,
         }
         of
         rows
       ) {
         if(title === 'untitled') {
           console.info(
-            `Skipping ${authors.length > 0 ? `${authors.join("'s & ")}'s` : ''}${
-            ' '}Entry in ${cat} ("untitled")`
+            `Skipping: ${
+              authors.length > 0 ? `${authors.join("'s & ")}'s` : ''
+            } Entry in ${cat} ("untitled")`
           )
         } else {
           console.info(`Processing: ${title} by ${authors.join(' & ')}`)
@@ -182,7 +175,7 @@ const setUUIDs = async (label) => {
             `
               MATCH (c:Category {uuid: $catUUID})
               MATCH (a:Award {uuid: $awardUUID})
-              MERGE (c)-[:OF]->(a)
+              MERGE (c)-[:PART_OF]->(a)
             `,
             { catUUID, awardUUID },
           )
@@ -201,7 +194,7 @@ const setUUIDs = async (label) => {
             authors.map(async (author) => {
               const result = await neoExec(
                 `
-                  MERGE (a:Creator:${movie ? 'Director' : 'Author'} {name: $name})
+                  MERGE (a:Person:Author {name: $name})
                   ON CREATE SET a.uuid = apoc.create.uuid()
                   RETURN a
                 `,
@@ -211,30 +204,23 @@ const setUUIDs = async (label) => {
             })
           )
 
-          if(type === 'SHORTFICTION') {
-            type = 'Short Fiction'
-          }
-          type = capitalize(type)
-
-          copyright = copyright?.toISOString?.()
-
           let cypher = (
             creatorUUIDs.map((uuid, i) => (
-              `MATCH (c${i}:Creator {uuid: "${uuid}"})\n`
+              `MATCH (p${i}:Person {uuid: "${uuid}"})\n`
             ))
             .join('')
           )
           cypher += (
-            `MERGE (w:Work:${movie ? 'Movie' : 'Book'} {title: $title})\n`
+            `MERGE (w:Work:Book {title: $title})\n`
           )
           cypher += (
             creatorUUIDs.map((uuid, i) => (
-              `MERGE (w)-[r${i}:BY]->(a${i})\n`
+              `MERGE (w)-[r${i}:BY]->(p${i})\n`
             ))
             .join('')
           )
           cypher += (
-            `ON CREATE SET w.uuid = apoc.create.uuid(), w.type = $type\n`
+            "ON CREATE SET w.uuid = apoc.create.uuid()\n"
           )
           if(authors.length > 1) {
             cypher += (
@@ -244,14 +230,15 @@ const setUUIDs = async (label) => {
               .join('')
             )
           }
-          cypher += (
-            `ON CREATE SET w.copyright = $copyright\n`
-          )
           cypher += 'RETURN w'
           result = await neoExec(
-            cypher, { title, type, copyright }
+            cypher, { title }
           )
           const workUUID = getUUID(result)
+
+          if(!workUUID) {
+            console.warn('Failed Query', cypher)
+          }
 
           result = await neoExec(
             `
@@ -259,16 +246,23 @@ const setUUIDs = async (label) => {
               MATCH (y:Year {uuid: $yearUUID})
               MATCH (c:Category {uuid: $catUUID})
               MATCH (a:Award {uuid: $awardUUID})
-              WHERE NOT EXISTS((a)<-[:FOR]-()-[:IN]->(y))
-              CREATE (n:Nominee${level === '1' ? ':Winner' : ''})
+              MATCH (x)
+              WHERE NOT (
+                EXISTS((x)-[:IN]->(y))
+                AND EXISTS((x)-[:IS]->(w))
+                AND EXISTS((x)-[:FOR]->(a))
+                AND EXISTS((x)-[:IN]->(c))
+              )
+              CREATE (n:Nominee${parseInt(level, 10) === 1 ? ':Winner' : ''})
               CREATE (n)-[:IS]->(w)
               CREATE (n)-[:IN]->(y)
-              CREATE (n)-[:OF]->(c)
+              CREATE (n)-[:IN]->(c)
               CREATE (n)-[:FOR]->(a)
               SET n.uuid = apoc.create.uuid()
+              SET n.place = $level
               RETURN n
             `,
-            { workUUID, yearUUID, catUUID, awardUUID },
+            { workUUID, yearUUID, catUUID, awardUUID, level },
           )
           const nomineeUUID = getUUID(result)
 
@@ -276,10 +270,9 @@ const setUUIDs = async (label) => {
         }
       }
     }
-  
-    //console.log(node.properties.name)
   }))
 
+  console.info("Closing Connection")
   await connection.close()
   await driver.close()
 })()
