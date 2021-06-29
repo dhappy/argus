@@ -3,7 +3,6 @@
 import mysql from 'mysql2/promise'
 import neo4j from 'neo4j-driver'
 import jsdom from 'jsdom'
-import { of } from 'rxjs'
 const { JSDOM } = jsdom
 
 const derefEntities = (str) => {
@@ -105,16 +104,17 @@ const setUUIDs = async (label) => {
     )
     const awardUUID = getUUID(result)
 
-    const LIMIT = 5 // return limit for debugging purposes
+    const LIMIT = Number.MAX_VALUE//5 // return limit for debugging purposes
     let done = false
     let count = 0
     // limit to paginate & avoid overflowing the stack
-    const limit = Math.min(LIMIT ?? Number.MAX_VALUE, 500)
+    const limit = Math.min(LIMIT, 500)
     while(!done) {
       const TYPES = [
         'ANTHOLOGY', 'COLLECTION', 'NOVEL', 'NONFICTION',
         'OMNIBUS', 'POEM', 'SHORTFICTION', 'CHAPBOOK',
       ]
+      console.info(`Selecting: ${count * limit}+${limit} from ${award.shortname} (${award.id})`)
       const nomineesQuery = (`
         SELECT
         award_title AS title,
@@ -136,7 +136,9 @@ const setUUIDs = async (label) => {
         )
       )
       
-      done = (count * limit > LIMIT || raws.length === 0)
+      done = (count * limit > LIMIT || raws.length < limit)
+
+      console.info(` Selected: ${raws.length} from ${award.shortname} (${done}) (Page #${count})`)
 
       const rows = raws.map((row) => ({
         ...row,
@@ -246,13 +248,15 @@ const setUUIDs = async (label) => {
               MATCH (y:Year {uuid: $yearUUID})
               MATCH (c:Category {uuid: $catUUID})
               MATCH (a:Award {uuid: $awardUUID})
-              MATCH (x)
-              WHERE NOT (
-                EXISTS((x)-[:IN]->(y))
-                AND EXISTS((x)-[:IS]->(w))
-                AND EXISTS((x)-[:FOR]->(a))
-                AND EXISTS((x)-[:IN]->(c))
-              )
+              WITH w, y, c, a
+              WHERE NOT EXISTS {
+                MATCH (x)-[:FOR]->(a)
+                WHERE (
+                  (x)-[:IN]->(y)
+                  AND (x)-[:IS]->(w)
+                  AND (x)-[:IN]->(c)
+                )
+              }
               CREATE (n:Nominee${parseInt(level, 10) === 1 ? ':Winner' : ''})
               CREATE (n)-[:IS]->(w)
               CREATE (n)-[:IN]->(y)
